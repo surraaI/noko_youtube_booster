@@ -2,17 +2,14 @@ const express = require('express');
 const dotenv = require('dotenv');
 const connectDB = require('./utils/db');
 const passport = require('passport');
-const authRoutes = require('./routes/authRoutes'); 
+const authRoutes = require('./routes/authRoutes');
 const session = require('express-session');
+const path = require('path'); 
 
-
-
-
-dotenv.config(); // Load environment variables
+dotenv.config(); 
 
 const app = express();
-const port = 3000;
-
+const port = process.env.PORT || 3000;
 
 // Configure session middleware
 app.use(
@@ -25,20 +22,29 @@ app.use(
 );
 
 // Middleware
-app.use(express.json()); // Parse JSON bodies
-app.use(passport.initialize()); // Initialize Passport
-require('./config/passport')(passport); // Configure Passport
+app.use(express.json()); 
+app.use(passport.initialize()); 
+app.use(passport.session()); 
+require('./config/passport')(passport); 
 
 // Connect to the database
 connectDB();
 
 // Routes
-app.use('/auth', authRoutes); // Auth routes
+app.use('/auth', authRoutes); 
 app.get('/', (req, res) => {
     res.send('Welcome to the Noko Youtube Boost!');
 });
 
+
+if (process.env.NODE_ENV === 'production') {
+    app.use(express.static(path.join(__dirname, 'client/build')));
+    app.get('*', (req, res) =>
+        res.sendFile(path.resolve(__dirname, 'client', 'build', 'index.html'))
+    );
+}
+
 // Start the server
 app.listen(port, () => {
-    console.log(`Example app listening at http://localhost:${port}`);
+    console.log(`Server running at http://localhost:${port}`);
 });
