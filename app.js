@@ -2,12 +2,27 @@ const express = require('express');
 const dotenv = require('dotenv');
 const connectDB = require('./utils/db');
 const passport = require('passport');
-const authRoutes = require('./routes/authRoutes'); // Import the authRoutes
+const authRoutes = require('./routes/authRoutes'); 
+const session = require('express-session');
+
+
+
 
 dotenv.config(); // Load environment variables
 
 const app = express();
 const port = 3000;
+
+
+// Configure session middleware
+app.use(
+    session({
+        secret: process.env.SESSION_SECRET,
+        resave: false,
+        saveUninitialized: false,
+        cookie: { secure: false }, // Use `true` in production with HTTPS
+    })
+);
 
 // Middleware
 app.use(express.json()); // Parse JSON bodies

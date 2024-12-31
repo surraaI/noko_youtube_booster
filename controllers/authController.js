@@ -15,8 +15,6 @@ const transporter = nodemailer.createTransport({
 // Send verification email
 const sendVerificationEmail = async (user, token) => {
     const url = `${process.env.CLIENT_URL}/verify-email/${token}`;
-    console.log('Sending email to:', user.email);
-
     try {
         await transporter.sendMail({
             to: user.email,
@@ -30,18 +28,14 @@ const sendVerificationEmail = async (user, token) => {
                 <p>Best regards,<br>The Noko YouTube Booster Team</p>
             `,
         });
-        console.log('Email sent successfully');
+        console.log('Verification email sent successfully');
     } catch (error) {
-        console.error('Error sending email:', error.message);
+        console.error('Error sending verification email:', error.message);
     }
 };
 
-
-// Function to validate email format
-const isValidEmail = (email) => {
-    const regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return regex.test(email);
-};
+// Validate email format
+const isValidEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
 // User signup
 exports.signup = async (req, res) => {
@@ -53,7 +47,7 @@ exports.signup = async (req, res) => {
             return res.status(400).json({ message: 'Invalid email format' });
         }
 
-        // Check if user exists
+        // Check if user already exists
         const existingUser = await User.findOne({ email });
         if (existingUser) {
             return res.status(400).json({ message: 'User already exists' });
@@ -63,7 +57,7 @@ exports.signup = async (req, res) => {
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(password, salt);
 
-        // Create user
+        // Create new user
         const newUser = new User({
             name,
             email,
@@ -73,15 +67,15 @@ exports.signup = async (req, res) => {
 
         const savedUser = await newUser.save();
 
-        // Generate email verification token
+        // Generate verification token
         const emailToken = jwt.sign({ id: savedUser._id }, process.env.JWT_SECRET, { expiresIn: '1h' });
 
         // Send verification email
         await sendVerificationEmail(savedUser, emailToken);
 
-        res.status(201).json({ message: 'Signup successful. Welcome to Noko YouTube Booster! Please check your email to verify your account.' });
+        res.status(201).json({ message: 'Signup successful! Please verify your email to activate your account.' });
     } catch (error) {
-        console.error(error);
+        console.error(error.message);
         res.status(500).json({ message: 'Internal server error' });
     }
 };
@@ -94,20 +88,24 @@ exports.verifyEmail = async (req, res) => {
 
         const user = await User.findById(decoded.id);
         if (!user) {
-            return res.status(400).json({ message: 'Invalid token' });
+            return res.status(400).json({ message: 'Invalid or expired token' });
+        }
+
+        if (user.isVerified) {
+            return res.status(400).json({ message: 'Email is already verified' });
         }
 
         user.isVerified = true;
         await user.save();
 
-        res.status(200).json({ message: 'Email verified successfully' });
+        res.status(200).json({ message: 'Email verified successfully. You can now log in.' });
     } catch (error) {
-        console.error(error);
-        res.status(500).json({ message: 'Internal server error' });
+        console.error(error.message);
+        res.status(500).json({ message: 'Invalid or expired token' });
     }
 };
 
-// User login
+// User login with session
 exports.login = async (req, res) => {
     try {
         const { email, password } = req.body;
@@ -118,7 +116,7 @@ exports.login = async (req, res) => {
         }
 
         if (!user.isVerified) {
-            return res.status(400).json({ message: 'Please verify your email to login.' });
+            return res.status(400).json({ message: 'Please verify your email to log in' });
         }
 
         const isMatch = await bcrypt.compare(password, user.password);
@@ -126,11 +124,23 @@ exports.login = async (req, res) => {
             return res.status(400).json({ message: 'Invalid email or password' });
         }
 
-        const token = jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET, { expiresIn: '1d' });
-
-        res.status(200).json({ message: 'Login successful', token });
+        // Store user in session
+        req.session.user = { id: user._id, role: user.role };
+        res.status(200).json({ message: 'Login successful' });
     } catch (error) {
-        console.error(error);
+        console.error(error.message);
         res.status(500).json({ message: 'Internal server error' });
     }
+};
+
+// User logout
+exports.logout = (req, res) => {
+    req.session.destroy((err) => {
+        if (err) {
+            console.error(err.message);
+            return res.status(500).json({ message: 'Failed to logout' });
+        }
+        res.clearCookie('connect.sid');
+        res.status(200).json({ message: 'Logout successful' });
+    });
 };
