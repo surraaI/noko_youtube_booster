@@ -50,7 +50,7 @@ const getOrders = async (req, res) => {
     }
 };
 
-// Update Order (Status)
+// Update Order 
 const updateOrder = async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -59,13 +59,14 @@ const updateOrder = async (req, res) => {
 
     try {
         const { id: orderId } = req.params;
-        const { status } = req.body;
+        const { youtubeLink, thumbnail, title, amountPaid, description, status } = req.body;
 
         const updatedOrder = await Order.findByIdAndUpdate(
             orderId,
-            { status },
-            { new: true, runValidators: true }
+            { youtubeLink, thumbnail, title, amountPaid, description, status },
+            { new: true }
         );
+        console.log(title);
 
         if (!updatedOrder) {
             return res.status(404).json({ message: 'Order not found' });

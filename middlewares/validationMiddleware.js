@@ -13,12 +13,19 @@ const validateOrder = [
     body('description').isString().trim().notEmpty().withMessage('Description is required'),
 ];
 
-// Validation rules for updating an order
 const validateOrderUpdate = [
+    body('youtubeLink').optional().isURL().withMessage('Invalid YouTube link'),
+    body('thumbnail').optional().isURL().withMessage('Invalid thumbnail URL'),
+    body('title').optional().isString().withMessage('Title must be a string'),
+    body('amountPaid').optional().isNumeric().withMessage('Amount paid must be a number'),
+    body('description').optional().isString().withMessage('Description must be a string'),
     body('status')
+        .optional()
         .isIn(['pending', 'completed', 'canceled'])
         .withMessage('Invalid status value'),
 ];
+
+// validate screenshot upload
 const validateScreenshotUpload = [
     body('orderId').notEmpty().withMessage('Order ID is required'),
 ];
