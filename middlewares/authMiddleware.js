@@ -18,4 +18,4 @@ const authMiddleware = (req, res, next) => {
     return res.status(401).json({ message: 'Unauthorized' });
 };
 
-module.exports = authMiddleware;
+module.exports = { authMiddleware };
