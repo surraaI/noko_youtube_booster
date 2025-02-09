@@ -11,12 +11,11 @@ const userSchema = new Schema(
           default: 'user' 
         },
         googleId: { type: String },
-        virtualGifts: { type: Number, default: 0 }, 
-        points: { type: Number, default: 0 }, 
         isVerified: { type: Boolean, default: false },
         referralCode: { type: String, unique: true },
         referredBy: { type: Schema.Types.ObjectId, ref: 'User' },
         referralBalance: { type: Number, default: 0 },
+        virtualGifts: { type: Number, default: 0 }, 
         totalEarnings: { type: Number, default: 0 },
         withdrawnAmount: { type: Number, default: 0 },
     },
