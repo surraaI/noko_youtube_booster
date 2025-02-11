@@ -3,6 +3,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const nodemailer = require('nodemailer');
 const crypto = require('crypto');
+const Referral = require('../models/Referral');
 
 // Setup Nodemailer transporter
 const transporter = nodemailer.createTransport({
@@ -58,24 +59,20 @@ const isValidEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 exports.signup = async (req, res) => {
     try {
         const { name, email, password } = req.body;
-        const { referralCode } = req.query; // Get referral code from query parameter
+        const { referralCode } = req.query;
 
-        // Validate email format
         if (!isValidEmail(email)) {
             return res.status(400).json({ message: 'Invalid email format' });
         }
 
-        // Check if user already exists
         const existingUser = await User.findOne({ email });
         if (existingUser) {
             return res.status(400).json({ message: 'User already exists' });
         }
 
-        // Hash password
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(password, salt);
 
-        // Initialize user data
         const userData = {
             name,
             email,
@@ -83,26 +80,32 @@ exports.signup = async (req, res) => {
             role: 'user',
         };
 
-        // Handle referral code
+        let referrer = null;
         if (referralCode) {
-            const referrer = await User.findOne({ referralCode });
+            referrer = await User.findOne({ referralCode });
             if (!referrer) {
                 return res.status(400).json({ message: 'Invalid referral code' });
             }
             userData.referredBy = referrer._id;
         }
 
-        // Create new user
         const newUser = new User(userData);
         const savedUser = await newUser.save();
 
-        // Generate verification token
-        const emailToken = jwt.sign({ id: savedUser._id }, process.env.JWT_SECRET, { expiresIn: '1h' });
+        // Create referral record if referral code was used
+        if (referrer) {
+            await Referral.create({
+                referrer: referrer._id,
+                referee: savedUser._id,
+                status: 'pending',
+                amount: 0
+            });
+        }
 
-        // Send verification email
+        const emailToken = jwt.sign({ id: savedUser._id }, process.env.JWT_SECRET, { expiresIn: '1h' });
         await sendVerificationEmail(savedUser, emailToken);
 
-        res.status(201).json({ message: 'Signup successful! Please verify your email to activate your account.' });
+        res.status(201).json({ message: 'Signup successful! Please verify your email.' });
     } catch (error) {
         console.error(error.message);
         res.status(500).json({ message: 'Internal server error' });
