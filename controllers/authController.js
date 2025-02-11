@@ -2,6 +2,7 @@ const User = require('../models/User');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const nodemailer = require('nodemailer');
+const crypto = require('crypto');
 
 // Setup Nodemailer transporter
 const transporter = nodemailer.createTransport({
@@ -205,4 +206,83 @@ exports.logout = async (req, res) => {
     }
 
     res.json({ message: 'Logout successful' });
+};
+
+// forgot password controller
+exports.forgotPassword = async (req, res) => {
+    try {
+        const { email } = req.body;
+        const user = await User.findOne({ email });
+
+        // Generic response to prevent email enumeration
+        if (!user) return res.status(200).json({ message: 'If the email exists, a reset link has been sent.' });
+
+        // Generate reset token
+        const resetToken = crypto.randomBytes(32).toString('hex');
+        const hashedToken = await bcrypt.hash(resetToken, 10);
+
+        // Set token expiration (1 hour)
+        user.passwordResetToken = hashedToken;
+        user.passwordResetExpires = Date.now() + 3600000;
+        await user.save();
+
+        // Send email with reset link
+        const resetUrl = `${process.env.CLIENT_URL}/reset-password?token=${encodeURIComponent(resetToken)}&id=${user._id}`;
+        await transporter.sendMail({
+            to: user.email,
+            subject: 'Password Reset Request - Noko Auth',
+            html: `
+                <h1>Password Reset</h1>
+                <p>Click the link to reset your password (expires in 1 hour):</p>
+                <a href="${resetUrl}">Reset Password</a>
+                <p>If you didn't request this, please ignore this email.</p>
+            `,
+        });
+
+        res.status(200).json({ message: 'Password reset email sent.' });
+    } catch (error) {
+        res.status(500).json({ message: 'Internal server error' });
+    }
+};
+
+// reset password controller
+exports.resetPassword = async (req, res) => {
+    try {
+        const { token, userId, newPassword } = req.body;
+        const user = await User.findById(userId);
+
+        // Validate token and user
+        if (!user || !user.passwordResetToken || Date.now() > user.passwordResetExpires) {
+            return res.status(400).json({ message: 'Invalid or expired token.' });
+        }
+
+        // Verify token
+        const isValidToken = await bcrypt.compare(token, user.passwordResetToken);
+        if (!isValidToken) return res.status(400).json({ message: 'Invalid token.' });
+
+        // Validate password
+        if (newPassword.length < 8) {
+            return res.status(400).json({ message: 'Password must be at least 8 characters.' });
+        }
+
+        // Update password and clear reset token
+        const hashedPassword = await bcrypt.hash(newPassword, 10);
+        user.password = hashedPassword;
+        user.refreshToken = null; // Invalidate existing sessions
+        user.passwordResetToken = undefined;
+        user.passwordResetExpires = undefined;
+        await user.save();
+
+        // Send confirmation email
+        await transporter.sendMail({
+            to: user.email,
+            subject: 'Password Updated Successfully',
+            html: `<p>Your password has been reset successfully.</p>`
+        });
+
+        console.log(`Password reset for ${user.email}`); // Security log
+        res.status(200).json({ message: 'Password updated successfully.' });
+    } catch (error) {
+        res.status(500).json({ message: 'Internal server error' });
+    }
 };

@@ -13,10 +13,7 @@ module.exports = (passport) => {
         new JwtStrategy(jwtOptions, async (payload, done) => {
             try {
                 const user = await User.findById(payload.id);
-                if (user) {
-                    return done(null, user);
-                }
-                return done(null, false);
+                return user ? done(null, user) : done(null, false);
             } catch (error) {
                 return done(error, false);
             }
@@ -33,20 +30,16 @@ module.exports = (passport) => {
             },
             async (accessToken, refreshToken, profile, done) => {
                 try {
-                    // Find existing user by Google ID
                     const existingUser = await User.findOne({ googleId: profile.id });
-                    if (existingUser) {
-                        return done(null, existingUser);
-                    }
+                    if (existingUser) return done(null, existingUser);
 
-                    // If no user exists, create a new one
-                    const newUser = new User({
+                    const newUser = await new User({
                         googleId: profile.id,
                         name: profile.displayName,
                         email: profile.emails[0].value,
-                        isVerified: true, // Users authenticated via Google are considered verified
-                    });
-                    await newUser.save();
+                        isVerified: true,
+                    }).save();
+                    
                     return done(null, newUser);
                 } catch (error) {
                     return done(error, null);
@@ -54,19 +47,4 @@ module.exports = (passport) => {
             }
         )
     );
-
-    // Serialize user for session
-    passport.serializeUser((user, done) => {
-        done(null, user.id);
-    });
-
-    // Deserialize user from session
-    passport.deserializeUser(async (id, done) => {
-        try {
-            const user = await User.findById(id);
-            done(null, user);
-        } catch (error) {
-            done(error, null);
-        }
-    });
 };

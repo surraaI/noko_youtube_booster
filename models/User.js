@@ -5,6 +5,8 @@ const userSchema = new Schema(
         name: { type: String, required: true },
         email: { type: String, required: true, unique: true },
         password: { type: String, required: true },
+        passwordResetToken: { type: String },
+        passwordResetExpires: { type: Date },
         role: { 
           type: String, 
           enum: ['superAdmin', 'admin', 'user'], 

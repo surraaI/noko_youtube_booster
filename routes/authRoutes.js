@@ -10,6 +10,8 @@ router.post('/login', authController.login);
 router.post('/logout', authController.logout);
 router.get('/google', passport.authenticate('google', { scope: ['profile', 'email'] }));
 router.post('/refresh-token', authController.refreshToken);
+router.post('/forgot-password', authController.forgotPassword);
+router.post('/reset-password', authController.resetPassword);
 
 router.get(
     '/google/callback',
