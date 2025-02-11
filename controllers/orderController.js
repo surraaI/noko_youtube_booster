@@ -1,5 +1,6 @@
 const { validationResult } = require('express-validator');
 const Order = require('../models/Order');
+const { processReferralCommission } = require('../utils/handleReferral');
 
 // Create Order
 const createOrder = async (req, res) => {
@@ -18,9 +19,11 @@ const createOrder = async (req, res) => {
             title,
             amountPaid,
             description,
+            status: 'pending' // Add initial status
         });
 
         const savedOrder = await newOrder.save();
+        
         res.status(201).json({
             message: 'Order created successfully',
             order: savedOrder,
@@ -38,9 +41,9 @@ const getOrders = async (req, res) => {
 
         let orders;
         if (role === 'admin' || role === 'superadmin') {
-            orders = await Order.find();
+            orders = await Order.find().populate('userId', 'name email');
         } else {
-            orders = await Order.find({ userId });
+            orders = await Order.find({ userId }).populate('userId', 'name email');
         }
 
         res.status(200).json({ orders });
@@ -61,15 +64,31 @@ const updateOrder = async (req, res) => {
         const { id: orderId } = req.params;
         const { youtubeLink, thumbnail, title, amountPaid, description, status } = req.body;
 
-        const updatedOrder = await Order.findByIdAndUpdate(
-            orderId,
-            { youtubeLink, thumbnail, title, amountPaid, description, status },
-            { new: true }
-        );
-        console.log(title);
-
-        if (!updatedOrder) {
+        const order = await Order.findById(orderId);
+        if (!order) {
             return res.status(404).json({ message: 'Order not found' });
+        }
+
+        const previousStatus = order.status;
+
+        // Update order fields
+        order.youtubeLink = youtubeLink || order.youtubeLink;
+        order.thumbnail = thumbnail || order.thumbnail;
+        order.title = title || order.title;
+        order.amountPaid = amountPaid ?? order.amountPaid;
+        order.description = description || order.description;
+        order.status = status || order.status;
+
+        const updatedOrder = await order.save();
+
+        // Handle referral commission on successful payment
+        if (previousStatus !== 'completed' && updatedOrder.status === 'completed') {
+            try {
+                await processReferralCommission(updatedOrder);
+            } catch (referralError) {
+                console.error('Referral processing failed:', referralError);
+                // Continue with response even if referral processing fails
+            }
         }
 
         res.status(200).json({
@@ -87,15 +106,18 @@ const cancelOrder = async (req, res) => {
     try {
         const { id: orderId } = req.params;
 
-        const canceledOrder = await Order.findByIdAndUpdate(
-            orderId,
-            { status: 'canceled' },
-            { new: true }
-        );
-
-        if (!canceledOrder) {
+        const order = await Order.findById(orderId);
+        if (!order) {
             return res.status(404).json({ message: 'Order not found' });
         }
+
+        // Prevent cancellation of completed orders
+        if (order.status === 'completed') {
+            return res.status(400).json({ message: 'Completed orders cannot be canceled' });
+        }
+
+        order.status = 'canceled';
+        const canceledOrder = await order.save();
 
         res.status(200).json({
             message: 'Order canceled successfully',
