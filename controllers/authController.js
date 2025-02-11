@@ -12,6 +12,22 @@ const transporter = nodemailer.createTransport({
     },
 });
 
+const generateTokens = (user) => {
+    const accessToken = jwt.sign(
+        { id: user._id, role: user.role },
+        process.env.JWT_SECRET,
+        { expiresIn: '15m' }
+    );
+
+    const refreshToken = jwt.sign(
+        { id: user._id },
+        process.env.REFRESH_TOKEN_SECRET,
+        { expiresIn: '7d' }
+    );
+
+    return { accessToken, refreshToken };
+};
+
 // Send verification email
 const sendVerificationEmail = async (user, token) => {
     const url = `${process.env.CLIENT_URL}/verify-email/${token}`;
@@ -41,6 +57,7 @@ const isValidEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 exports.signup = async (req, res) => {
     try {
         const { name, email, password } = req.body;
+        const { referralCode } = req.query; // Get referral code from query parameter
 
         // Validate email format
         if (!isValidEmail(email)) {
@@ -57,14 +74,25 @@ exports.signup = async (req, res) => {
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(password, salt);
 
-        // Create new user
-        const newUser = new User({
+        // Initialize user data
+        const userData = {
             name,
             email,
             password: hashedPassword,
             role: 'user',
-        });
+        };
 
+        // Handle referral code
+        if (referralCode) {
+            const referrer = await User.findOne({ referralCode });
+            if (!referrer) {
+                return res.status(400).json({ message: 'Invalid referral code' });
+            }
+            userData.referredBy = referrer._id;
+        }
+
+        // Create new user
+        const newUser = new User(userData);
         const savedUser = await newUser.save();
 
         // Generate verification token
@@ -79,6 +107,7 @@ exports.signup = async (req, res) => {
         res.status(500).json({ message: 'Internal server error' });
     }
 };
+
 
 // Verify email
 exports.verifyEmail = async (req, res) => {
@@ -109,38 +138,71 @@ exports.verifyEmail = async (req, res) => {
 exports.login = async (req, res) => {
     try {
         const { email, password } = req.body;
-
         const user = await User.findOne({ email });
-        if (!user) {
+
+        if (!user || !(await bcrypt.compare(password, user.password))) {
             return res.status(400).json({ message: 'Invalid email or password' });
         }
 
         if (!user.isVerified) {
-            return res.status(400).json({ message: 'Please verify your email to log in' });
+            return res.status(400).json({ message: 'Please verify your email' });
         }
 
-        const isMatch = await bcrypt.compare(password, user.password);
-        if (!isMatch) {
-            return res.status(400).json({ message: 'Invalid email or password' });
-        }
+        const { accessToken, refreshToken } = generateTokens(user);
+        user.refreshToken = refreshToken;
+        await user.save();
 
-        // Store user in session
-        req.session.user = { id: user._id, role: user.role };
-        res.status(200).json({ message: 'Login successful' });
+        res.cookie('refreshToken', refreshToken, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'Strict',
+            maxAge: 7 * 24 * 60 * 60 * 1000,
+        });
+
+        res.json({ accessToken });
     } catch (error) {
-        console.error(error.message);
         res.status(500).json({ message: 'Internal server error' });
+    }
+}
+
+
+exports.refreshToken = async (req, res) => {
+    const refreshToken = req.cookies.refreshToken;
+    if (!refreshToken) return res.status(401).json({ message: 'Unauthorized' });
+
+    try {
+        const decoded = jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET);
+        const user = await User.findById(decoded.id);
+
+        if (!user || user.refreshToken !== refreshToken) {
+            return res.status(403).json({ message: 'Invalid refresh token' });
+        }
+
+        const accessToken = jwt.sign(
+            { id: user._id, role: user.role },
+            process.env.JWT_SECRET,
+            { expiresIn: '15m' }
+        );
+
+        res.json({ accessToken });
+    } catch (error) {
+        res.status(403).json({ message: 'Invalid refresh token' });
     }
 };
 
-// User logout
-exports.logout = (req, res) => {
-    req.session.destroy((err) => {
-        if (err) {
-            console.error(err.message);
-            return res.status(500).json({ message: 'Failed to logout' });
+// logout controller
+exports.logout = async (req, res) => {
+    const refreshToken = req.cookies.refreshToken;
+    res.clearCookie('refreshToken');
+
+    if (refreshToken) {
+        try {
+            const decoded = jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET);
+            await User.findByIdAndUpdate(decoded.id, { refreshToken: null });
+        } catch (error) {
+            // Token verification failed, proceed with logout
         }
-        res.clearCookie('connect.sid');
-        res.status(200).json({ message: 'Logout successful' });
-    });
+    }
+
+    res.json({ message: 'Logout successful' });
 };

@@ -9,6 +9,7 @@ router.get('/verify-email/:token', authController.verifyEmail);
 router.post('/login', authController.login);
 router.post('/logout', authController.logout);
 router.get('/google', passport.authenticate('google', { scope: ['profile', 'email'] }));
+router.post('/refresh-token', authController.refreshToken);
 
 router.get(
     '/google/callback',
