@@ -1,19 +1,46 @@
+// routes/orderRoutes.js
 const express = require('express');
+const router = express.Router();
 const { 
     createOrder, 
     getOrders, 
+    getOrderById,
     updateOrder, 
-    cancelOrder 
+    verifyOrder, 
+    cancelOrder, 
+    subscribeToOrder 
+
 } = require('../controllers/orderController');
-const { validateOrder, validateOrderUpdate } = require('../middlewares/validationMiddleware');
-const { authMiddleware } = require('../middlewares/authMiddleware'); 
+const { authMiddleware } = require('../middlewares/authMiddleware');
+const  { roleMiddleware } = require('../middlewares/roleMiddleware');
+const { upload } = require('../middlewares/fileUploadMiddleware');
 
-const router = express.Router();
 
 
-router.post('/', authMiddleware, validateOrder, createOrder);
+router.post('/create-order', 
+    authMiddleware, 
+    upload.fields([
+      { name: 'paymentScreenshot', maxCount: 1 },
+      { name: 'thumbnail', maxCount: 1 }
+    ]), 
+    createOrder
+  );
+
 router.get('/', authMiddleware, getOrders);
-router.patch('/:id', authMiddleware, validateOrderUpdate, updateOrder); 
-router.patch('/:id/cancel', authMiddleware, cancelOrder);
+router.get('/:id', authMiddleware,roleMiddleware(['admin']), getOrderById);
+
+router.patch('/:id', 
+    authMiddleware, 
+    upload.fields([
+      { name: 'paymentScreenshot', maxCount: 1 },
+      { name: 'thumbnail', maxCount: 1 }
+    ]), 
+    updateOrder
+  );
+
+
+router.patch('/:id/verify', authMiddleware,  roleMiddleware(['admin']) , verifyOrder);
+router.delete('/:id', authMiddleware, cancelOrder);
+router.post('/:id/subscribe', authMiddleware, subscribeToOrder);
 
 module.exports = router;

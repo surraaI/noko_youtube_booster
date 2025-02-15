@@ -2,12 +2,12 @@
 const express = require('express');
 const router = express.Router();
 const referralController = require('../controllers/referralController');
-const auth = require('../middlewares/authMiddleware');
+const { authMiddleware } = require('../middlewares/authMiddleware');
 
 // User routes
-router.post('/apply', referralController.applyReferralCode);
-router.get('/stats', referralController.getReferralStats);
-router.post('/payout', referralController.requestPayout);
+router.post('/apply', authMiddleware, referralController.applyReferralCode);
+router.get('/stats', authMiddleware, referralController.getReferralStats);
+router.post('/payout', authMiddleware, referralController.requestPayout);
 // router.get('/code', referralController.getReferralCode);
 
 
