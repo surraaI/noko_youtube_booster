@@ -11,6 +11,7 @@ const subscriptionSchema = new Schema(
             type: Schema.Types.ObjectId,
             ref: 'Order',
             required: true,
+            unique: true,
         },
         screenshot: {
             type: String, 
@@ -23,5 +24,10 @@ const subscriptionSchema = new Schema(
     },
     { timestamps: true }
 );
+
+subscriptionSchema.index(
+    { userId: 1, orderId: 1 }, 
+    { unique: true, name: 'user_order_unique' }
+  );
 
 module.exports = model('Subscription', subscriptionSchema);
