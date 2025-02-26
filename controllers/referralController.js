@@ -86,41 +86,6 @@ exports.getReferralStats = async (req, res) => {
   }
 };
 
-exports.handleOrderCommission = async (order) => {
-  try {
-    const referredUser = await User.findById(order.user)
-      .populate('referredBy');
-    
-    if (!referredUser?.referredBy) return;
-
-    // Find existing pending referral
-    const referral = await Referral.findOne({
-      referee: referredUser._id,
-      status: 'pending'
-    });
-
-    if (referral) {
-      const commission = order.amount * config.commissionRate;
-      
-      // Update referral record
-      referral.amount = commission;
-      referral.status = order.status === 'completed' ? 'eligible' : 'pending';
-      referral.order = order._id;
-      await referral.save();
-
-      // Update referrer's balance
-      await User.findByIdAndUpdate(referredUser.referredBy._id, {
-        $inc: { 
-          referralBalance: commission,
-          totalEarnings: commission
-        }
-      });
-    }
-  } catch (error) {
-    console.error('Referral processing error:', error);
-  }
-};
-
 
 exports.requestPayout = async (req, res) => {
   try {

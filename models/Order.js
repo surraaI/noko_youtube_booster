@@ -70,6 +70,10 @@ const orderSchema = new Schema(
             enum: ['pending', 'active', 'completed', 'canceled'],
             default: 'pending'
         },
+        verifiedBy: {
+            type: Schema.Types.ObjectId,
+            ref: 'User'
+        }
     },
     { 
         timestamps: true,

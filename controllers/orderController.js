@@ -2,6 +2,7 @@ const { validationResult } = require('express-validator');
 const Order = require('../models/Order');
 const User = require('../models/User');
 const Subscription = require('../models/Subscription');
+const config = require('../config/referralConfig');
 
 
 // create Order 
@@ -28,7 +29,7 @@ const createOrder = async (req, res) => {
             amountPaid,
             description,
             paymentScreenshot: req.files['paymentScreenshot'][0].path,
-            status: 'active' 
+            status: 'pending' 
         });
 
         const savedOrder = await newOrder.save();
@@ -228,25 +229,33 @@ const verifyOrder = async (req, res) => {
         if (!order) return res.status(404).json({ message: 'Order not found' });
 
         if (order.status !== 'pending') {
-            return res.status(400).json({ 
-                message: 'Only pending orders can be verified' 
-            });
+            return res.status(400).json({ message: 'Only pending orders can be verified' });
         }
 
-        // Additional check for payment screenshot
+        // Ensure payment screenshot exists
         if (!order.paymentScreenshot) {
-            return res.status(400).json({ 
-                message: 'Order has no payment proof' 
-            });
+            return res.status(400).json({ message: 'Order has no payment proof' });
         }
 
-        // Update order status and set verification time
+        // Update order status
         order.status = 'active';
+        order.verifiedBy = req.user.id;
         order.verifiedAt = new Date();
         await order.save();
 
+        // Check if user was referred
+        const user = await User.findById(order.userId);
+        if (user && user.referredBy) {
+            const referrer = await User.findById(user.referredBy);
+            if (referrer) {
+                const commission = order.amountPaid * config.commissionRate; 
+                referrer.referralBalance += commission;
+                await referrer.save();
+            }
+        }
+
         res.status(200).json({
-            message: 'Order verified and activated',
+            message: 'Order verified and activated. Commission processed if applicable.',
             order
         });
     } catch (error) {
