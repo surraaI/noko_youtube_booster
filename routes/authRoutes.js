@@ -12,6 +12,7 @@ router.get('/google', passport.authenticate('google', { scope: ['profile', 'emai
 router.post('/refresh-token', authController.refreshToken);
 router.post('/forgot-password', authController.forgotPassword);
 router.post('/reset-password', authController.resetPassword);
+router.post('/resend-verification', authController.resendVerification);
 
 router.get(
     '/google/callback',
