@@ -7,7 +7,7 @@ const config = require('../config/referralConfig');
 
 // create Order 
 const createOrder = async (req, res) => {
-    const errors = validationResult(req);
+    const errors = validationResult(req);v
     if (!errors.isEmpty()) {
         return res.status(400).json({ errors: errors.array() });
     }
@@ -156,71 +156,6 @@ const updateOrder = async (req, res) => {
     }
 };
 
-// Subscribe to Order - Any user except order owner
-const subscribeToOrder = async (req, res) => {
-    try {
-        const order = await Order.findById(req.params.id);
-        if (!order) return res.status(404).json({ message: 'Order not found' });
-
-        // Prevent owner from subscribing to their own order
-        if (order.userId.toString() === req.user.id) {
-            return res.status(400).json({ message: 'Cannot subscribe to your own order' });
-        }
-
-        if (order.status !== 'active') {
-            return res.status(400).json({ message: 'Order is not available for subscriptions' });
-        }
-
-        if (order.remainingSubscribers <= 0) {
-            return res.status(400).json({ message: 'Order subscription quota filled' });
-        }
-
-        const existingSub = await Subscription.findOne({
-            order: order._id,
-            subscriber: req.user.id
-        });
-
-        if (existingSub) {
-            return res.status(400).json({ message: 'Already subscribed to this order' });
-        }
-
-        const session = await Order.startSession();
-        session.startTransaction();
-
-        try {
-            await Subscription.create([{
-                order: order._id,
-                subscriber: req.user.id
-            }], { session });
-
-            order.subscribed += 1;
-            order.remainingSubscribers -= 1;
-            
-            if (order.subscribed >= order.subscribersNeeded) {
-                order.status = 'completed';
-            }
-
-            await order.save({ session });
-            await User.findByIdAndUpdate(
-                req.user.id,
-                { $inc: { balance: 5 } },
-                { session }
-            );
-
-            await session.commitTransaction();
-            res.status(200).json({ message: 'Subscription recorded successfully' });
-        } catch (error) {
-            await session.abortTransaction();
-            throw error;
-        } finally {
-            session.endSession();
-        }
-    } catch (error) {
-        console.error('Error processing subscription:', error.message);
-        res.status(500).json({ message: 'Internal server error' });
-    }
-};
-
 
 // Verify Order (Admin)
 const verifyOrder = async (req, res) => {
@@ -300,5 +235,4 @@ module.exports = {
     updateOrder, 
     verifyOrder, 
     cancelOrder, 
-    subscribeToOrder 
 };

@@ -41,7 +41,7 @@ const verifyContent = (extractedText, channelName) => {
 };
 
 // Main Controller
-const uploadScreenshot = async (req, res) => {
+const subscribe = async (req, res) => {
   const session = await Order.startSession();
   session.startTransaction();
 
@@ -95,7 +95,7 @@ const uploadScreenshot = async (req, res) => {
       await order.save({ session });
 
       const user = await User.findById(userId).session(session);
-      user.balance += 5;
+      user.virtualGifts += 10;
       await user.save({ session });
     }
 
@@ -185,7 +185,7 @@ const manualVerify = async (req, res) => {
 };
 
 module.exports = {
-  uploadScreenshot,
+  subscribe,
   getAllSubscriptions,
   manualVerify
 };

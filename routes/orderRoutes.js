@@ -27,7 +27,7 @@ router.post('/create-order',
   );
 
 router.get('/', authMiddleware, getOrders);
-router.get('/:id', authMiddleware,roleMiddleware(['admin']), getOrderById);
+router.get('/:id', authMiddleware, getOrderById);
 
 router.patch('/:id', 
     authMiddleware, 
@@ -41,6 +41,5 @@ router.patch('/:id',
 
 router.patch('/:id/verify', authMiddleware,  roleMiddleware(['admin']) , verifyOrder);
 router.delete('/:id', authMiddleware, cancelOrder);
-router.post('/:id/subscribe', authMiddleware, subscribeToOrder);
 
 module.exports = router;
