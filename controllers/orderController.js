@@ -7,7 +7,7 @@ const config = require('../config/referralConfig');
 
 // create Order 
 const createOrder = async (req, res) => {
-    const errors = validationResult(req);v
+    const errors = validationResult(req);
     if (!errors.isEmpty()) {
         return res.status(400).json({ errors: errors.array() });
     }
