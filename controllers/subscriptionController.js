@@ -4,12 +4,21 @@ const Subscription = require('../models/Subscription');
 const Order = require('../models/Order');
 const User = require('../models/User');
 
-// OCR Text Extraction
+// Helper to extract username from YouTube link
+const extractUsernameFromLink = (youtubeLink) => {
+  const match = youtubeLink.match(/@([\w-]+)/);
+  if (!match || !match[1]) {
+    throw new Error('Invalid YouTube link format - missing username');
+  }
+  return match[1].toLowerCase();
+};
+
+// OCR Text Extraction (updated character whitelist)
 const extractText = async (imagePath) => {
   try {
     const { data: { text } } = await Tesseract.recognize(imagePath, 'eng', {
       logger: (m) => console.log(m),
-      tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789- ',
+      tessedit_char_whitelist: '@ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_ ',
     });
     return text.toLowerCase();
   } catch (error) {
@@ -18,29 +27,28 @@ const extractText = async (imagePath) => {
   }
 };
 
-// Direct Verification Check
-const verifyContent = (extractedText, channelName) => {
-  // Normalize channel name: lowercase + remove spaces
-  const targetChannel = channelName.toLowerCase().replace(/\s/g, '');
-  
-  // Normalize OCR text: lowercase + remove spaces
+// Updated Verification Check
+const verifyContent = (extractedText, username) => {
+  // Normalize inputs
+  const targetUsername = username.toLowerCase().replace(/\s/g, '');
   const cleanText = extractedText.replace(/\s/g, '');
-  
-  // Check conditions
-  const hasChannel = cleanText.includes(targetChannel);
+
+  // Check for both @username and username formats
+  const hasUsername = cleanText.includes(targetUsername) || 
+                     cleanText.includes(`@${targetUsername}`);
   const hasSubscribed = extractedText.includes('subscribed');
 
   console.log('Verification Check:', {
-    targetChannel,
+    targetUsername,
     cleanText,
-    hasChannel,
+    hasUsername,
     hasSubscribed
   });
 
-  return hasChannel && hasSubscribed;
+  return hasUsername && hasSubscribed;
 };
 
-// Main Controller
+// Updated Subscribe Controller
 const subscribe = async (req, res) => {
   const session = await Order.startSession();
   session.startTransaction();
@@ -49,40 +57,36 @@ const subscribe = async (req, res) => {
     const { orderId } = req.body;
     const userId = req.user.id;
 
-    // Validate input
     if (!req.file || !orderId) {
       await session.abortTransaction();
       return res.status(400).json({ message: 'Screenshot and order ID required' });
     }
 
-    // Check existing subscription
     const existingSub = await Subscription.findOne({ userId, orderId }).session(session);
     if (existingSub) {
       await session.abortTransaction();
       return res.status(400).json({ message: 'Already subscribed to this order' });
     }
 
-    // Get order
     const order = await Order.findById(orderId).session(session);
     if (!order) {
       await session.abortTransaction();
       return res.status(404).json({ message: 'Order not found' });
     }
 
-    // Prevent self-subscription
     if (order.userId.toString() === userId.toString()) {
       await session.abortTransaction();
       return res.status(403).json({ message: 'Cannot subscribe to your own order' });
     }
 
-    // Process OCR
+    // Extract username from YouTube link
+    const username = extractUsernameFromLink(order.youtubeLink);
+    
     const extractedText = await extractText(req.file.path);
     console.log('Raw OCR Text:', extractedText);
 
-    // Verify content
-    const isVerified = verifyContent(extractedText, order.channelName);
+    const isVerified = verifyContent(extractedText, username);
 
-    // Create subscription
     const subscription = new Subscription({
       userId,
       orderId,
@@ -92,7 +96,6 @@ const subscribe = async (req, res) => {
 
     const savedSubscription = await subscription.save({ session });
 
-    // Update order and user if verified
     if (isVerified) {
       order.subscribed += 1;
       if (order.subscribed >= order.subscribersNeeded) {
@@ -118,10 +121,14 @@ const subscribe = async (req, res) => {
     await session.abortTransaction();
     console.error('Error:', error);
 
-    res.status(500).json({
-      message: error.code === 11000 
+    const message = error.message.startsWith('Invalid YouTube link') 
+      ? 'Invalid YouTube channel format in order'
+      : error.code === 11000 
         ? 'Duplicate subscription detected' 
-        : 'Server processing error',
+        : 'Server processing error';
+
+    res.status(500).json({
+      message,
       error: error.message
     });
   } finally {
