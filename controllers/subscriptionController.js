@@ -69,6 +69,12 @@ const subscribe = async (req, res) => {
       return res.status(404).json({ message: 'Order not found' });
     }
 
+    // Prevent self-subscription
+    if (order.userId.toString() === userId.toString()) {
+      await session.abortTransaction();
+      return res.status(403).json({ message: 'Cannot subscribe to your own order' });
+    }
+
     // Process OCR
     const extractedText = await extractText(req.file.path);
     console.log('Raw OCR Text:', extractedText);
