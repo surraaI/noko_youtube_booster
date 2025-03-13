@@ -3,12 +3,13 @@ const { getAllSubscriptions, manualVerify, subscribe } = require('../controllers
 const { validateScreenshotUpload } = require('../middlewares/validationMiddleware');
 const { upload } = require('../middlewares/fileUploadMiddleware');
 const { authMiddleware } = require('../middlewares/authMiddleware');
+const { roleMiddleware } = require('../middlewares/roleMiddleware');
 
 const router = express.Router();
 
 
 router.get('/', authMiddleware, getAllSubscriptions);
-router.post('/:id/verify', authMiddleware, manualVerify);
+router.post('/:id/verify', authMiddleware, roleMiddleware(['admin']), manualVerify);
 
 router.post(
     '/subscribe',
