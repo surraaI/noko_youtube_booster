@@ -11,6 +11,8 @@ const authRoutes = require('./routes/authRoutes');
 const orderRoutes = require('./routes/orderRoutes');
 const subscriptionRoutes = require('./routes/subscriptionRoutes');
 const referralRoutes = require('./routes/referralRoutes');
+const userRoutes = require('./routes/userRoutes');
+
 
 dotenv.config();
 const app = express();
@@ -43,6 +45,8 @@ const allowedOrigins = [
 app.use(express.json());
 app.use(cookieParser());
 app.use(passport.initialize());
+// Serve static files from uploads directory
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Passport configuration
 require('./config/passport')(passport);
@@ -52,6 +56,7 @@ app.use('/auth', authRoutes);
 app.use('/orders', orderRoutes);
 app.use('/subscriptions', subscriptionRoutes);
 app.use('/referrals', referralRoutes);
+app.use('/users', userRoutes);
 
 // Basic route
 app.get('/', (req, res) => {
