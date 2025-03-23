@@ -136,10 +136,11 @@ const subscribe = async (req, res) => {
   }
 };
 
-// Additional Controllers
+/// controllers/subscriptionController.js
 const getAllSubscriptions = async (req, res) => {
   try {
-    const subscriptions = await Subscription.find()
+    // Filter subscriptions by current user
+    const subscriptions = await Subscription.find({ userId: req.user.id })
       .populate('userId', 'name email')
       .populate('orderId', 'channelName');
       
@@ -148,6 +149,7 @@ const getAllSubscriptions = async (req, res) => {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
+
 
 const manualVerify = async (req, res) => {
   const session = await Order.startSession();
