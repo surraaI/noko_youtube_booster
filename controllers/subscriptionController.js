@@ -57,86 +57,87 @@ const subscribe = async (req, res) => {
     const { orderId } = req.body;
     const userId = req.user.id;
 
+    // Validate input
     if (!req.file || !orderId) {
       await session.abortTransaction();
-      return res.status(400).json({ message: 'Screenshot and order ID required' });
+      session.endSession();
+      return res.status(400).json({ message: 'Missing required fields' });
     }
 
+    // Check existing subscription
     const existingSub = await Subscription.findOne({ userId, orderId }).session(session);
     if (existingSub) {
       await session.abortTransaction();
-      return res.status(400).json({ message: 'Already subscribed to this order' });
+      session.endSession();
+      return res.status(409).json({ message: 'Duplicate subscription' });
     }
 
+    // Validate order
     const order = await Order.findById(orderId).session(session);
-    if (!order) {
+    if (!order || order.userId.toString() === userId.toString()) {
       await session.abortTransaction();
-      return res.status(404).json({ message: 'Order not found' });
+      session.endSession();
+      return res.status(order ? 403 : 404).json({
+        message: order ? 'Cannot subscribe to own order' : 'Order not found'
+      });
     }
 
-    if (order.userId.toString() === userId.toString()) {
-      await session.abortTransaction();
-      return res.status(403).json({ message: 'Cannot subscribe to your own order' });
-    }
-
-    // Extract username from YouTube link
+    // Perform verification
     const username = extractUsernameFromLink(order.youtubeLink);
-    
     const extractedText = await extractText(req.file.path);
-    console.log('Raw OCR Text:', extractedText);
-
     const isVerified = verifyContent(extractedText, username);
 
-    const subscription = new Subscription({
+    if (!isVerified) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(400).json({ message: 'Verification failed' });
+    }
+
+    // Create subscription
+    const subscription = await new Subscription({
       userId,
       orderId,
       screenshot: req.file.path,
-      verified: isVerified,
-    });
+      verified: true
+    }).save({ session });
 
-    const savedSubscription = await subscription.save({ session });
-
-    if (isVerified) {
-      order.subscribed += 1;
-      if (order.subscribed >= order.subscribersNeeded) {
-        order.status = 'completed';
-      }
-      await order.save({ session });
-
-      const user = await User.findById(userId).session(session);
-      user.virtualGifts += 10;
-      await user.save({ session });
+    // Update order and user
+    order.subscribed += 1;
+    if (order.subscribed >= order.subscribersNeeded) {
+      order.status = 'completed';
     }
+    
+    await Promise.all([
+      order.save({ session }),
+      User.findByIdAndUpdate(userId, 
+        { $inc: { virtualGifts: 10 } },
+        { session }
+      )
+    ]);
 
     await session.commitTransaction();
+    session.endSession();
 
-    res.status(201).json({
-      message: isVerified 
-        ? 'Subscription automatically verified' 
-        : 'Pending manual verification',
-      subscription: savedSubscription
+    return res.status(201).json({
+      message: 'Subscription verified and created',
+      subscription
     });
 
   } catch (error) {
     await session.abortTransaction();
-    console.error('Error:', error);
-
-    const message = error.message.startsWith('Invalid YouTube link') 
-      ? 'Invalid YouTube channel format in order'
-      : error.code === 11000 
-        ? 'Duplicate subscription detected' 
-        : 'Server processing error';
-
-    res.status(500).json({
-      message,
+    session.endSession();
+    
+    const statusCode = error instanceof mongoose.Error.ValidationError ? 400 : 500;
+    return res.status(statusCode).json({
+      message: error.message.startsWith('Invalid YouTube') 
+        ? 'Invalid YouTube channel' 
+        : 'Subscription processing failed',
       error: error.message
     });
-  } finally {
-    session.endSession();
   }
 };
 
-/// controllers/subscriptionController.js
+// controllers/subscriptionController.js
 const getAllSubscriptions = async (req, res) => {
   try {
     // Filter subscriptions by current user
@@ -149,7 +150,6 @@ const getAllSubscriptions = async (req, res) => {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
-
 
 const manualVerify = async (req, res) => {
   const session = await Order.startSession();
