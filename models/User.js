@@ -18,6 +18,7 @@ const userSchema = new Schema(
         referralCode: { type: String, unique: true },
         referredBy: { type: Schema.Types.ObjectId, ref: 'User' },
         referralBalance: { type: Number, default: 0 },
+        totalReferrals: { type: Number, default: 0 },
         virtualGifts: { type: Number, default: 0 }, 
         totalEarnings: { type: Number, default: 0 },
         withdrawnAmount: { type: Number, default: 0 },

@@ -1,4 +1,3 @@
-// models/Referral.js
 const { Schema, model } = require('mongoose');
 
 const referralSchema = new Schema({
@@ -13,23 +12,10 @@ const referralSchema = new Schema({
     required: [true, 'Referee is required'],
     unique: true 
   },
-  order: { 
-    type: Schema.Types.ObjectId, 
-    ref: 'Order',
-    index: true 
-  },
-  amount: { 
+  rewardAmount: { 
     type: Number, 
     default: 0,  
     min: [0, 'Amount cannot be negative'] 
-  },
-  status: {
-    type: String,
-    enum: {
-      values: ['pending', 'eligible', 'paid', 'reversed'],
-      message: 'Invalid referral status'
-    },
-    default: 'pending'
   }
 }, { 
   timestamps: true,
@@ -37,7 +23,7 @@ const referralSchema = new Schema({
   toObject: { virtuals: true }
 });
 
-// Indexes for common query patterns
-referralSchema.index({ referrer: 1, status: 1 });
+// Index for quick lookups
+referralSchema.index({ referrer: 1 });
 
 module.exports = model('Referral', referralSchema);
