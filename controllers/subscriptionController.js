@@ -3,6 +3,7 @@ const Tesseract = require('tesseract.js');
 const Subscription = require('../models/Subscription');
 const Order = require('../models/Order');
 const User = require('../models/User');
+const sharp = require('sharp');
 
 // Helper to extract username from YouTube link
 const extractUsernameFromLink = (youtubeLink) => {
@@ -16,10 +17,23 @@ const extractUsernameFromLink = (youtubeLink) => {
 // OCR Text Extraction (updated character whitelist)
 const extractText = async (imagePath) => {
   try {
-    const { data: { text } } = await Tesseract.recognize(imagePath, 'eng', {
+    // Preprocess image with Sharp
+    const processedImage = await sharp(imagePath)
+      .resize({ width: 2000 }) // Increase width while maintaining aspect ratio
+      .grayscale() // Convert to grayscale to reduce color noise
+      .normalize() // Auto-adjust contrast and brightness
+      .sharpen({ sigma: 1, m1: 0, m2: 3 }) // Mild sharpening
+      .threshold(128) // Binarize image (pure black/white)
+      .toBuffer();
+
+    const { data: { text } } = await Tesseract.recognize(processedImage, 'eng', {
       logger: (m) => console.log(m),
       tessedit_char_whitelist: '@ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_ ',
+      // Add OCR engine parameters for better accuracy
+      tessedit_pageseg_mode: 6, // Assume single uniform text block
+      tessedit_ocr_engine_mode: 3, // Both legacy and LSTM engines
     });
+
     return text.toLowerCase();
   } catch (error) {
     console.error('OCR Error:', error);
@@ -27,18 +41,21 @@ const extractText = async (imagePath) => {
   }
 };
 
-// Updated Verification Check
+// Enhanced Verification Check with fuzzy matching
 const verifyContent = (extractedText, username) => {
-  // Normalize inputs
   const targetUsername = username.toLowerCase().replace(/\s/g, '');
-  const cleanText = extractedText.replace(/\s/g, '');
+  const cleanText = extractedText.replace(/\s/g, '').replace(/[^a-z0-9@-_]/g, '');
 
-  // Check for both @username and username formats
-  const hasUsername = cleanText.includes(targetUsername) || 
-                     cleanText.includes(`@${targetUsername}`);
-  const hasSubscribed = extractedText.includes('subscribed');
+  // Fuzzy match for username (allowing minor OCR errors)
+  const usernameRegex = new RegExp(
+    `@?${targetUsername.split('').join('[ _-]?')}[ _-]?`,
+    'i'
+  );
 
-  console.log('Verification Check:', {
+  const hasUsername = usernameRegex.test(cleanText);
+  const hasSubscribed = /subscribed/i.test(extractedText);
+
+  console.log('Enhanced Verification:', {
     targetUsername,
     cleanText,
     hasUsername,

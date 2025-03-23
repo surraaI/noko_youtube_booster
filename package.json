@@ -9,7 +9,7 @@
     "dev": "nodemon app.js"
   },
   "keywords": [],
-  "author": "",
+  "author": "Sura Itana",
   "license": "ISC",
   "dependencies": {
     "axios": "^1.7.9",
@@ -31,6 +31,7 @@
     "passport-google-oauth20": "^2.0.0",
     "passport-jwt": "^4.0.1",
     "request": "^2.88.2",
+    "sharp": "^0.33.5",
     "string-similarity": "^4.0.4",
     "tesseract.js": "^5.0.4"
   },
