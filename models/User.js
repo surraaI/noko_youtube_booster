@@ -13,7 +13,6 @@ const userSchema = new Schema(
           enum: ['superAdmin', 'admin', 'user'], 
           default: 'user' 
         },
-        googleId: { type: String },
         isVerified: { type: Boolean, default: false },
         referralCode: { type: String, unique: true },
         referredBy: { type: Schema.Types.ObjectId, ref: 'User' },
