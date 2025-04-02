@@ -4,6 +4,7 @@ const Subscription = require('../models/Subscription');
 const Order = require('../models/Order');
 const User = require('../models/User');
 const sharp = require('sharp');
+const mongoose = require('mongoose');
 
 // Helper to extract username from YouTube link
 const extractUsernameFromLink = (youtubeLink) => {
@@ -86,7 +87,7 @@ const subscribe = async (req, res) => {
     if (existingSub) {
       await session.abortTransaction();
       session.endSession();
-      return res.status(409).json({ message: 'Duplicate subscription' });
+      return res.status(409).json({ message: `you've already subscribed to the channel` });
     }
 
     // Validate order
@@ -107,7 +108,7 @@ const subscribe = async (req, res) => {
     if (!isVerified) {
       await session.abortTransaction();
       session.endSession();
-      return res.status(400).json({ message: 'Verification failed' });
+      return res.status(400).json({ message: 'Verification failed, upload clear screanshot of your subscription' });
     }
 
     // Create subscription
@@ -137,9 +138,14 @@ const subscribe = async (req, res) => {
 
     return res.status(201).json({
       message: 'Subscription verified and created',
-      subscription
+      subscription: {
+        ...subscription.toObject(),
+        orderId: subscription.orderId,
+        verified: subscription.verified
+      },
+      coinsAwarded: 10
     });
-
+    
   } catch (error) {
     await session.abortTransaction();
     session.endSession();

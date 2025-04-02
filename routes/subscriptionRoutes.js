@@ -9,7 +9,6 @@ const router = express.Router();
 
 
 router.get('/', authMiddleware, getAllSubscriptions);
-router.post('/:id/verify', authMiddleware, roleMiddleware(['admin']), manualVerify);
 
 router.post(
     '/subscribe',
