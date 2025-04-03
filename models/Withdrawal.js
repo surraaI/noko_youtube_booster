@@ -100,8 +100,11 @@ const withdrawalSchema = new Schema({
 withdrawalSchema.plugin(mongooseFieldEncryption, {
   fields: ['bankDetails'],
   secret: process.env.MONGO_ENC_SECRET,
-  saltGenerator: secret => crypto.randomBytes(32)
+  saltGenerator: function(secret) {
+    return crypto.randomBytes(16); // Changed from 32 to 16 bytes
+  }
 });
+
 
 // Indexes
 withdrawalSchema.index({ createdAt: -1 });

@@ -132,16 +132,18 @@ exports.createWithdrawal = async (req, res) => {
 
       // Audit log
       await AuditLog.create({
-          userId: user._id,
-          action: 'WITHDRAWAL_CREATE',
-          ip: req.ip,
-          userAgent: req.headers['user-agent'],
-          metadata: {
-              withdrawalId: withdrawal[0]._id,
-              amount: netAmount,
-              fee: fee,
-              currency: 'USD'
-          }
+        user: user._id,  // Match schema field name
+        action: 'WITHDRAWAL_CREATE',
+        ipAddress: req.ip || req.headers['x-forwarded-for'] || req.connection.remoteAddress,
+        userAgent: req.headers['user-agent'] || 'Unknown',
+        metadata: {
+          withdrawalId: withdrawal[0]._id,
+          amount: netAmount,
+          fee: fee,
+          currency: 'USD',
+          method: method,
+          accountLast4: accountNumber.slice(-4)
+        }
       });
 
       await session.commitTransaction();
@@ -277,13 +279,15 @@ exports.processWithdrawal = async (req, res) => {
     // Audit log entry
     await AuditLog.create({
       user: req.user.id,
-      action: `Withdrawal ${req.body.status}`,
-      ipAddress: req.ip,
-      userAgent: req.get('User-Agent'),
+      action: `WITHDRAWAL_${req.body.status.toUpperCase()}`,
+      ipAddress: req.ip || req.headers['x-forwarded-for'] || req.connection.remoteAddress,
+      userAgent: req.headers['user-agent'] || 'Unknown',
       metadata: {
         withdrawalId: withdrawal._id,
-        amount: withdrawal.amount,
-        status: req.body.status
+        processedBy: req.user.id,
+        previousStatus: 'pending',
+        newStatus: req.body.status,
+        note: req.body.note
       }
     });
 
