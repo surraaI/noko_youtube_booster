@@ -202,22 +202,63 @@ exports.createWithdrawal = async (req, res) => {
 
 exports.getUserWithdrawals = async (req, res) => {
   try {
+    // Validate user existence first
+    const userExists = await User.exists({ _id: req.user.id });
+    if (!userExists) {
+      return res.status(404).json({
+        code: 'USER_NOT_FOUND',
+        error: 'User account not found'
+      });
+    }
+
+    // Add debug logging
+    console.log(`Fetching withdrawals for user: ${req.user.id}`);
+    const startTime = Date.now();
+
     const withdrawals = await Withdrawal.find({ user: req.user.id })
       .sort('-createdAt')
       .lean()
-      .transform(results => results.map(w => ({
-        ...w,
-        bankDetails: {
-          accountNumber: `••••${safeDecrypt(w.bankDetails.accountNumber).slice(-4)}`,
-          bankName: w.bankDetails.bankName ? safeDecrypt(w.bankDetails.bankName) : null
-        }
-      })));
+      .transform(results => {
+        console.log(`Found ${results.length} withdrawals`);
+        return results.map(w => {
+          try {
+            return {
+              ...w,
+              bankDetails: {
+                accountNumber: `••••${safeDecrypt(w.bankDetails.accountNumber).slice(-4)}`,
+                bankName: w.bankDetails.bankName ? safeDecrypt(w.bankDetails.bankName) : 'Unknown Bank'
+              }
+            };
+          } catch (decryptError) {
+            console.error('Decryption failed for withdrawal:', w._id, decryptError);
+            return {
+              ...w,
+              bankDetails: {
+                error: 'Secure details unavailable'
+              }
+            };
+          }
+        });
+      });
 
+    console.log(`Withdrawals fetch completed in ${Date.now() - startTime}ms`);
+    
     res.json(withdrawals);
+
   } catch (error) {
+    console.error('Withdrawal retrieval error:', {
+      userId: req.user.id,
+      error: error.message,
+      stack: error.stack
+    });
+
     res.status(500).json({ 
-      error: 'Failed to retrieve withdrawals',
-      code: 'WITHDRAWAL_RETRIEVAL_FAILED'
+      code: 'WITHDRAWAL_RETRIEVAL_FAILED',
+      error: 'Failed to retrieve withdrawal history',
+      details: process.env.NODE_ENV === 'development' ? {
+        message: error.message,
+        stack: error.stack
+      } : undefined
     });
   }
 };
