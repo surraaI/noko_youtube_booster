@@ -2,103 +2,199 @@ const Withdrawal = require('../models/Withdrawal');
 const User = require('../models/User');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
+const AuditLog = require('../models/AuditLog');
 
 // Encryption configuration
-const algorithm = 'aes-256-cbc';
-const encryptionKey = Buffer.from(process.env.ENCRYPTION_KEY, 'hex');
-const iv = Buffer.from(process.env.ENCRYPTION_IV, 'hex');
+const ALGORITHM = 'aes-256-ctr';
+const KEY_LENGTH = 32;
+const IV_LENGTH = 16;
 
-const encrypt = (text) => {
-  const cipher = crypto.createCipheriv(algorithm, encryptionKey, iv);
-  let encrypted = cipher.update(text, 'utf8', 'hex');
-  encrypted += cipher.final('hex');
-  return encrypted;
+const deriveKey = () => {
+  return crypto.scryptSync(
+    process.env.ENCRYPTION_SECRET,
+    process.env.ENCRYPTION_SALT,
+    KEY_LENGTH
+  );
 };
 
-const decrypt = (encryptedText) => {
-  const decipher = crypto.createDecipheriv(algorithm, encryptionKey, iv);
-  let decrypted = decipher.update(encryptedText, 'hex', 'utf8');
-  decrypted += decipher.final('utf8');
-  return decrypted;
+const encrypt = (text) => {
+  const iv = crypto.randomBytes(IV_LENGTH);
+  const cipher = crypto.createCipheriv(ALGORITHM, deriveKey(), iv);
+  const encrypted = Buffer.concat([cipher.update(text), cipher.final()]);
+  return `${iv.toString('hex')}:${encrypted.toString('hex')}`;
+};
+
+const safeDecrypt = (encryptedText) => {
+  try {
+    const [ivPart, dataPart] = encryptedText.split(':');
+    if (!ivPart || !dataPart) throw new Error('Invalid encrypted text');
+    
+    const iv = Buffer.from(ivPart, 'hex');
+    const decipher = crypto.createDecipheriv(ALGORITHM, deriveKey(), iv);
+    return Buffer.concat([
+      decipher.update(Buffer.from(dataPart, 'hex')), 
+      decipher.final()
+    ]).toString();
+  } catch (error) {
+    console.error('Decryption error:', error);
+    throw new Error('Invalid encrypted data');
+  }
 };
 
 exports.createWithdrawal = async (req, res) => {
   const session = await User.startSession();
   session.startTransaction();
+  let virtualGiftsDeducted, referralBalanceDeducted, availableBalance, fee, netAmount;
 
   try {
-    // Verify transaction token
-    const { transactionToken } = req.body;
-    const decoded = jwt.verify(transactionToken, process.env.JWT_SECRET);
-    
-    if (decoded.purpose !== 'withdrawal' || decoded.userId !== req.user.id) {
-      throw new Error('Invalid transaction token');
-    }
-
-    const user = await User.findById(req.user.id).session(session);
-    const { accountNumber, accountHolderName, bankName, method } = req.body;
-
-    // Validate bank details
-    if (!/^\d{9,18}$/.test(accountNumber)) {
-      throw new Error('Invalid account number format');
-    }
-
-    if (!/^[A-Za-z\s]{5,}$/.test(accountHolderName)) {
-      throw new Error('Invalid account holder name');
-    }
-
-    // Calculate amounts
-    const virtualGiftsDeducted = user.virtualGifts / 2;
-    const referralBalanceDeducted = user.referralBalance;
-    const feePercentage = process.env.TRANSACTION_FEE_PERCENTAGE || 2.5;
-    const fee = (virtualGiftsDeducted + referralBalanceDeducted) * (feePercentage / 100);
-    const netAmount = (virtualGiftsDeducted + referralBalanceDeducted) - fee;
-
-    if (netAmount < (process.env.MIN_WITHDRAWAL || 100)) {
-      throw new Error(`Minimum net withdrawal amount is ${process.env.MIN_WITHDRAWAL || 100}`);
-    }
-
-    // Create withdrawal record
-    const withdrawal = await Withdrawal.create([{
-      user: user._id,
-      amount: netAmount,
-      method,
-      virtualGiftsDeducted,
-      referralBalanceDeducted,
-      bankDetails: {
-        accountNumber: encrypt(accountNumber),
-        accountHolderName: encrypt(accountHolderName),
-        bankName: encrypt(bankName)
+      const { transaction } = req;
+      
+      if (!transaction || transaction.userId !== req.user.id) {
+          throw new Error('Transaction validation failed');
       }
-    }], { session });
 
-    // Update user balances
-    user.virtualGifts -= virtualGiftsDeducted;
-    user.referralBalance = 0;
-    await user.save({ session });
+      const user = await User.findById(req.user.id).session(session);
+      const { accountNumber, accountHolderName, bankName, method } = req.body;
 
-    await session.commitTransaction();
-    
-    res.status(201).json({
-      message: 'Withdrawal request submitted',
-      withdrawal: {
-        ...withdrawal[0].toObject(),
-        bankDetails: {
-          accountNumber: `••••${accountNumber.slice(-4)}`,
-          accountHolderName,
-          bankName
-        }
+      // Validation: Account Number
+      if (!/^\d{9,18}$/.test(accountNumber)) {
+          throw Object.assign(new Error('Invalid account number format'), {
+              code: 'INVALID_ACCOUNT_NUMBER',
+              details: {
+                  received: accountNumber,
+                  requirement: '9-18 numeric characters'
+              }
+          });
       }
-    });
+
+      // Validation: Account Holder Name
+      if (!/^[\p{L}\p{M}\s-]{5,}$/u.test(accountHolderName)) {
+          throw Object.assign(new Error('Invalid account holder name'), {
+              code: 'INVALID_ACCOUNT_NAME',
+              details: {
+                  received: accountHolderName,
+                  requirement: 'Minimum 5 letters/hyphens'
+              }
+          });
+      }
+
+      // Calculate amounts
+      const virtualGiftsDeducted = parseFloat((user.virtualGifts / 2).toFixed(2));
+      const referralBalanceDeducted = parseFloat(user.referralBalance.toFixed(2));
+      const availableBalance = virtualGiftsDeducted + referralBalanceDeducted;
+      const feePercentage = parseFloat(process.env.TRANSACTION_FEE_PERCENTAGE || 2.5);
+      const fee = parseFloat((availableBalance * (feePercentage / 100)).toFixed(2));
+      const netAmount = parseFloat((availableBalance - fee).toFixed(2));
+      const minWithdrawal = Number(process.env.MIN_WITHDRAWAL || 1000).toFixed(2);
+
+      // Check minimum withdrawal
+      if (netAmount < minWithdrawal) {
+          const balanceDetails = {
+              currentBalances: {
+                  virtualGifts: user.virtualGifts.toFixed(2),
+                  referralBalance: user.referralBalance.toFixed(2)
+              },
+              withdrawalCalculation: {
+                  availableBalance: availableBalance.toFixed(2),
+                  feePercentage: `${feePercentage}%`,
+                  feeAmount: fee,
+                  netAmount: netAmount.toFixed(2),
+                  minimumRequired: minWithdrawal
+              }
+          };
+
+          throw Object.assign(
+            new Error(`Insufficient funds for withdrawal. Net amount: ${netAmount}`),
+            { 
+                code: 'INSUFFICIENT_FUNDS',
+                ...balanceDetails 
+            }
+          );
+      }
+      // Create withdrawal record
+      const withdrawal = await Withdrawal.create([{
+          user: user._id,
+          amount: netAmount,
+          method,
+          virtualGiftsDeducted,
+          referralBalanceDeducted,
+          bankDetails: {
+              accountNumber: encrypt(accountNumber),
+              accountHolderName: encrypt(accountHolderName),
+              bankName: encrypt(bankName)
+          }
+      }], { session });
+
+      // Update user balance
+      user.virtualGifts = parseFloat((user.virtualGifts - virtualGiftsDeducted).toFixed(2));
+      user.referralBalance = 0;
+      await user.save({ session });
+
+      // Audit log
+      await AuditLog.create({
+          userId: user._id,
+          action: 'WITHDRAWAL_CREATE',
+          ip: req.ip,
+          userAgent: req.headers['user-agent'],
+          metadata: {
+              withdrawalId: withdrawal[0]._id,
+              amount: netAmount,
+              fee: fee,
+              currency: 'USD'
+          }
+      });
+
+      await session.commitTransaction();
+      
+      res.status(201).json({
+          status: 'success',
+          data: {
+              id: withdrawal[0]._id,
+              amount: netAmount,
+              fee: fee,
+              netAmount: netAmount,
+              status: 'pending',
+              estimatedProcessing: '3-5 business days'
+          }
+      });
 
   } catch (error) {
-    await session.abortTransaction();
-    res.status(400).json({ 
-      error: error.message,
-      code: error.code || 'WITHDRAWAL_CREATION_FAILED' 
-    });
+      await session.abortTransaction();
+      
+      const response = {
+          status: 'error',
+          code: error.code || 'WITHDRAWAL_FAILED',
+          message: error.message
+      };
+
+      // Add validation details if available
+      if (error.details) {
+          response.validation = error.details;
+      }
+
+      // Add balance details for insufficient funds
+      if (error.code === 'INSUFFICIENT_FUNDS') {
+          response.currentBalances = error.currentBalances;
+          response.withdrawalCalculation = error.withdrawalCalculation;
+      }
+
+      // Development-only details
+      if (process.env.NODE_ENV === 'development') {
+          response.stack = error.stack;
+          response.debug = {
+              rawAmounts: {
+                  virtualGiftsDeducted,
+                  referralBalanceDeducted,
+                  availableBalance,
+                  fee,
+                  netAmount
+              }
+          };
+      }
+
+      res.status(error.statusCode || 400).json(response);
   } finally {
-    session.endSession();
+      session.endSession();
   }
 };
 
@@ -110,8 +206,8 @@ exports.getUserWithdrawals = async (req, res) => {
       .transform(results => results.map(w => ({
         ...w,
         bankDetails: {
-          accountNumber: `••••${decrypt(w.bankDetails.accountNumber).slice(-4)}`,
-          bankName: w.bankDetails.bankName ? decrypt(w.bankDetails.bankName) : null
+          accountNumber: `••••${safeDecrypt(w.bankDetails.accountNumber).slice(-4)}`,
+          bankName: w.bankDetails.bankName ? safeDecrypt(w.bankDetails.bankName) : null
         }
       })));
 
@@ -133,7 +229,7 @@ exports.getPendingWithdrawals = async (req, res) => {
     res.json(withdrawals.map(w => ({
       ...w.toObject(),
       bankDetails: {
-        accountNumber: `••••${decrypt(w.bankDetails.accountNumber).slice(-4)}`
+        accountNumber: `••••${safeDecrypt(w.bankDetails.accountNumber).slice(-4)}`
       }
     })));
   } catch (error) {
@@ -177,6 +273,20 @@ exports.processWithdrawal = async (req, res) => {
     }
 
     await withdrawal.save({ session });
+
+    // Audit log entry
+    await AuditLog.create({
+      user: req.user.id,
+      action: `Withdrawal ${req.body.status}`,
+      ipAddress: req.ip,
+      userAgent: req.get('User-Agent'),
+      metadata: {
+        withdrawalId: withdrawal._id,
+        amount: withdrawal.amount,
+        status: req.body.status
+      }
+    });
+
     await session.commitTransaction();
     
     res.json({
@@ -184,7 +294,7 @@ exports.processWithdrawal = async (req, res) => {
       withdrawal: {
         ...withdrawal.toObject(),
         bankDetails: {
-          accountNumber: `••••${decrypt(withdrawal.bankDetails.accountNumber).slice(-4)}`
+          accountNumber: `••••${safeDecrypt(withdrawal.bankDetails.accountNumber).slice(-4)}`
         }
       }
     });
@@ -210,9 +320,9 @@ exports.getSecureDetails = async (req, res) => {
     }
 
     res.json({
-      accountNumber: decrypt(withdrawal.bankDetails.accountNumber),
-      accountHolderName: decrypt(withdrawal.bankDetails.accountHolderName),
-      bankName: withdrawal.bankDetails.bankName ? decrypt(withdrawal.bankDetails.bankName) : null
+      accountNumber: safeDecrypt(withdrawal.bankDetails.accountNumber),
+      accountHolderName: safeDecrypt(withdrawal.bankDetails.accountHolderName),
+      bankName: withdrawal.bankDetails.bankName ? safeDecrypt(withdrawal.bankDetails.bankName) : null
     });
   } catch (error) {
     res.status(400).json({ error: error.message });

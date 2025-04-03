@@ -317,27 +317,25 @@ exports.resendVerification = async (req, res) => {
   };
 
 // Verify password for transaction
-  exports.verifyPasswordForTransaction = async (req, res) => {
+exports.verifyPasswordForTransaction = async (req, res) => {
     try {
-      const { password } = req.body;
       const user = await User.findById(req.user.id).select('+password');
       
-      if (!await bcrypt.compare(password, user.password)) {
+      if (!await bcrypt.compare(req.body.password, user.password)) {
         return res.status(401).json({ error: 'Invalid password' });
       }
   
-      // Generate time-limited transaction token (5 minutes)
       const transactionToken = jwt.sign(
-        { userId: user._id, purpose: 'withdrawal' },
+        { 
+          userId: user._id, 
+          purpose: 'withdrawal', // Must match middleware check
+          iat: Math.floor(Date.now() / 1000) // Current timestamp in seconds
+        },
         process.env.JWT_SECRET,
-        { expiresIn: '5m' }
+        { expiresIn: '5m' } // 5 minutes expiration
       );
   
-      res.json({ 
-        success: true,
-        transactionToken
-      });
-  
+      res.json({ transactionToken });
     } catch (error) {
       res.status(500).json({ error: 'Verification failed' });
     }

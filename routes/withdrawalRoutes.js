@@ -3,60 +3,42 @@ const router = express.Router();
 const withdrawalController = require('../controllers/withdrawalController');
 const { authMiddleware } = require('../middlewares/authMiddleware');
 const { roleMiddleware } = require('../middlewares/roleMiddleware');
+const { verifyTransactionToken } = require('../middlewares/transactionAuth'); 
+const { verifyPasswordForTransaction } = require('../controllers/authController');
+const User = require('../models/User');
 
 // Password verification endpoint
 router.post('/verify-password', 
+    authMiddleware,
+    verifyPasswordForTransaction
+  );
+
+// Withdrawal routes
+router.post('/', 
   authMiddleware,
-  async (req, res) => {
-    try {
-      const { password } = req.body;
-      const user = await User.findById(req.user.id).select('+password');
-      
-      if (!await bcrypt.compare(password, user.password)) {
-        return res.status(401).json({ error: 'Invalid password' });
-      }
-
-      const transactionToken = jwt.sign(
-        { userId: user._id, purpose: 'withdrawal' },
-        process.env.JWT_SECRET,
-        { expiresIn: '5m' }
-      );
-
-      res.json({ transactionToken });
-
-    } catch (error) {
-      res.status(500).json({ error: 'Verification failed' });
-    }
-  }
-);
-
-// Withdrawal creation (requires transaction token)
-router.post('/withdrawals', 
-  authMiddleware,
+  verifyTransactionToken, // Added middleware here
   withdrawalController.createWithdrawal
 );
 
-// User withdrawal history
-router.get('/withdrawals/my-withdrawals', 
+router.get('/my-withdrawals', 
   authMiddleware,
   withdrawalController.getUserWithdrawals
 );
 
 // Admin endpoints
-router.get('/withdrawals/pending', 
+router.get('/pending', 
   authMiddleware,
   roleMiddleware(['admin', 'superAdmin']),
   withdrawalController.getPendingWithdrawals
 );
 
-router.put('/withdrawals/:id/process', 
+router.put('/:id/process', 
   authMiddleware,
   roleMiddleware(['admin', 'superAdmin']),
   withdrawalController.processWithdrawal
 );
 
-// Secure bank details access
-router.get('/withdrawals/:id/details',
+router.get('/:id/details',
   authMiddleware,
   roleMiddleware(['admin', 'superAdmin']),
   withdrawalController.getSecureDetails
