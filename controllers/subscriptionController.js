@@ -20,20 +20,23 @@ const extractText = async (imagePath) => {
   try {
     // Preprocess image with Sharp
     const processedImage = await sharp(imagePath)
-      .resize({ width: 2000 }) // Increase width while maintaining aspect ratio
-      .grayscale() // Convert to grayscale to reduce color noise
-      .normalize() // Auto-adjust contrast and brightness
-      .sharpen({ sigma: 1, m1: 0, m2: 3 }) // Mild sharpening
-      .threshold(128) // Binarize image (pure black/white)
+      .resize({ width: 2000, kernel: sharp.kernel.cubic }) // Higher quality scaling
+      .linear(1.1, -50) // Increase contrast
+      .modulate({ brightness: 1.2 }) // Brighten image
+      .median(3) // Reduce noise
+      .sharpen({ sigma: 2, flat: 1, jagged: 2 }) // Enhanced sharpening
+      .threshold(128, { adaptiveWindowSize: true }) // Adaptive thresholding
       .toBuffer();
 
-    const { data: { text } } = await Tesseract.recognize(processedImage, 'eng', {
-      logger: (m) => console.log(m),
-      tessedit_char_whitelist: '@ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_ ',
-      // Add OCR engine parameters for better accuracy
-      tessedit_pageseg_mode: 6, // Assume single uniform text block
-      tessedit_ocr_engine_mode: 3, // Both legacy and LSTM engines
-    });
+      const { data: { text } } = await Tesseract.recognize(processedImage, 'eng', {
+        logger: info => console.debug(info),
+        tessedit_char_whitelist: '@abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_ ',
+        tessedit_pageseg_mode: 11, // Sparse text with orientation
+        tessedit_ocr_engine_mode: 4, // Default + LSTM only
+        preserve_interword_spaces: 1, // Maintain spacing
+        user_defined_dpi: 300, // Force high DPI processing
+        textord_min_linesize: 2.5, // Better for small text
+      });
 
     return text.toLowerCase();
   } catch (error) {
