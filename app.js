@@ -24,26 +24,34 @@ connectDB();
 // Configure allowed origins
 const allowedOrigins = process.env.CLIENT_URL 
   ? process.env.CLIENT_URL.split(',') 
-  : ['http://localhost:5173']; 
+  : [];
 
-// CORS configuration
+// Add debug logging
 const corsOptions = {
   origin: (origin, callback) => {
-    console.log(`[CORS] Incoming origin: ${origin}`);
-    console.log(`[CORS] Allowed origins: ${allowedOrigins}`);
+    console.log(`[CORS] Incoming origin: ${origin} | Allowed: ${allowedOrigins}`);
     
-    if (!origin || allowedOrigins.includes(origin)) {
-      console.log(`[CORS] Allowed access for: ${origin}`);
+    // Allow requests with no origin (non-browser clients)
+    if (!origin) {
+      console.warn('[CORS] Allowing request with no origin');
+      return callback(null, true);
+    }
+
+    if (allowedOrigins.some(allowed => {
+      const regex = new RegExp(allowed.replace('*', '.*'));
+      return regex.test(origin);
+    })) {
+      console.log(`[CORS] Allowed: ${origin}`);
       callback(null, true);
     } else {
-      console.log(`[CORS] Blocked origin: ${origin}`);
+      console.log(`[CORS] Blocked: ${origin}`);
       callback(new Error('Not allowed by CORS'));
     }
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
-  optionsSuccessStatus: 204 // Proper status for OPTIONS requests
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  optionsSuccessStatus: 204
 };
 
 // Apply CORS middleware
