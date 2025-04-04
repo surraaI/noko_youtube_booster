@@ -30,6 +30,98 @@ const generateTokens = (user) => {
     return { accessToken, refreshToken };
 };
 
+const renderVerificationPage = (title, message, isSuccess = true) => `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${title}</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+
+        body {
+            background: ${isSuccess ? '#0f172a' : '#1e293b'};
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .container {
+            background: #1e293b;
+            padding: 2.5rem;
+            border-radius: 1rem;
+            text-align: center;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            max-width: 500px;
+            width: 90%;
+            border: 1px solid ${isSuccess ? '#3b82f6' : '#ef4444'};
+        }
+
+        .icon {
+            font-size: 4rem;
+            color: ${isSuccess ? '#3b82f6' : '#ef4444'};
+            margin-bottom: 1.5rem;
+        }
+
+        h1 {
+            color: #fff;
+            margin-bottom: 1rem;
+            font-size: 1.8rem;
+        }
+
+        p {
+            color: #94a3b8;
+            line-height: 1.6;
+            margin-bottom: 2rem;
+        }
+
+        .button {
+            background: #3b82f6;
+            color: white;
+            padding: 0.8rem 1.5rem;
+            border-radius: 0.5rem;
+            text-decoration: none;
+            display: inline-block;
+            font-weight: 500;
+            transition: transform 0.2s;
+        }
+
+        .button:hover {
+            transform: translateY(-2px);
+        }
+
+        .noko-logo {
+            width: 120px;
+            margin-bottom: 2rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            ${isSuccess ? 
+                '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>' :
+                '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>'
+            }
+        </svg>
+        <h1>${title}</h1>
+        <p>${message}</p>
+        ${isSuccess ? 
+            '<a href="/auth/login" class="button">Go to Login</a>' : 
+            '<a href="/" class="button">Return Home</a>'
+        }
+    </div>
+</body>
+</html>
+`;
+
 // Send verification email
 const sendVerificationEmail = async (user, token) => {
     const url = `${process.env.BACKEND_URL}/auth/verify-email/${token}`;
@@ -121,20 +213,35 @@ exports.verifyEmail = async (req, res) => {
 
         const user = await User.findById(decoded.id);
         if (!user) {
-            return res.status(400).json({ message: 'Invalid or expired token' });
+            return res.send(renderVerificationPage(
+                'Verification Failed',
+                'Invalid verification token. Please try registering again.',
+                false
+            ));
         }
 
         if (user.isVerified) {
-            return res.status(400).json({ message: 'Email is already verified' });
+            return res.send(renderVerificationPage(
+                'Already Verified',
+                'Your email address was already confirmed.',
+                true
+            ));
         }
 
         user.isVerified = true;
         await user.save();
 
-        res.status(200).json({ message: 'Email verified successfully. You can now log in.' });
+        res.send(renderVerificationPage(
+            'Email Verified! 🎉',
+            'Your email has been successfully verified. You can now log in to your account.'
+        ));
+
     } catch (error) {
-        console.error(error.message);
-        res.status(500).json({ message: 'Invalid or expired token' });
+        res.send(renderVerificationPage(
+            'Verification Failed',
+            'The verification link has expired or is invalid. Please request a new verification email.',
+            false
+        ));
     }
 };
 
