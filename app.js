@@ -23,27 +23,25 @@ const port = process.env.PORT || 3000;
 connectDB();
 
 // Middleware Configuration
-// Update CORS configuration to handle multiple origins
-const allowedOrigins = [
-    process.env.CLIENT_URL,
-    'http://localhost:5173',
-    'http://localhost:3000'
-  ];
+const corsOptions = {
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      console.error(`Blocked by CORS: ${origin}`);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  preflightContinue: false, // Ensure preflight requests are handled properly
+};
+
+app.use(cors(corsOptions));
+
   
-  app.use(cors({
-    origin: (origin, callback) => {
-      if (!origin || allowedOrigins.indexOf(origin) !== -1) {
-        callback(null, true);
-      } else {
-        callback(new Error('Not allowed by CORS'));
-      }
-    },
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
-  }));
-  
-app.use(express.json());
+app.use(express.json());pp.use(cors({ origin: '*', credentials: true }));
 app.use(cookieParser());
 app.use(passport.initialize());
 // Serve static files from uploads directory
