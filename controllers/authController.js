@@ -36,17 +36,17 @@ const renderVerificationPage = (title, message, isSuccess = true) => `
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>${title}</title>
+    <title>${title} - Noko YouTube Booster</title>
     <style>
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-family: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
         }
 
         body {
-            background: ${isSuccess ? '#0f172a' : '#1e293b'};
+            background: #0f0f0f;
             height: 100vh;
             display: flex;
             align-items: center;
@@ -54,69 +54,118 @@ const renderVerificationPage = (title, message, isSuccess = true) => `
         }
 
         .container {
-            background: #1e293b;
+            background: #212121;
             padding: 2.5rem;
-            border-radius: 1rem;
+            border-radius: 12px;
             text-align: center;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            box-shadow: 0 4px 20px rgba(0,0,0,0.4);
             max-width: 500px;
             width: 90%;
-            border: 1px solid ${isSuccess ? '#3b82f6' : '#ef4444'};
+            border: 2px solid ${isSuccess ? '#FF0000' : '#cc0000'};
+            animation: fadeIn 0.6s ease-in;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
         }
 
         .icon {
-            font-size: 4rem;
-            color: ${isSuccess ? '#3b82f6' : '#ef4444'};
-            margin-bottom: 1.5rem;
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 1.5rem;
+            background: ${isSuccess ? '#FF0000' : '#cc0000'};
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .icon svg {
+            width: 40px;
+            height: 40px;
+            fill: white;
         }
 
         h1 {
-            color: #fff;
+            color: #ffffff;
             margin-bottom: 1rem;
-            font-size: 1.8rem;
+            font-size: 24px;
+            font-weight: 500;
         }
 
         p {
-            color: #94a3b8;
+            color: #aaaaaa;
             line-height: 1.6;
             margin-bottom: 2rem;
+            font-size: 16px;
         }
 
         .button {
-            background: #3b82f6;
+            background: #FF0000;
             color: white;
-            padding: 0.8rem 1.5rem;
-            border-radius: 0.5rem;
+            padding: 12px 24px;
+            border-radius: 24px;
             text-decoration: none;
             display: inline-block;
             font-weight: 500;
-            transition: transform 0.2s;
+            transition: all 0.3s ease;
+            border: none;
+            cursor: pointer;
+            font-size: 16px;
         }
 
         .button:hover {
-            transform: translateY(-2px);
+            background: #cc0000;
+            transform: scale(1.05);
+            box-shadow: 0 4px 15px rgba(255,0,0,0.3);
         }
 
-        .noko-logo {
-            width: 120px;
-            margin-bottom: 2rem;
+        .youtube-brand {
+            position: absolute;
+            top: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .youtube-logo {
+            width: 40px;
+            height: 40px;
+        }
+
+        .brand-text {
+            color: white;
+            font-size: 24px;
+            font-weight: 500;
+            letter-spacing: -0.5px;
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-            ${isSuccess ? 
-                '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>' :
-                '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>'
-            }
+    <div class="youtube-brand">
+        <svg class="youtube-logo" viewBox="0 0 24 24" fill="#FF0000">
+            <path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0-3.897.266-4.356 2.62-4.385 8.816.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0 3.897-.266 4.356-2.62 4.385-8.816-.029-6.185-.484-8.549-4.385-8.816zm-10.615 12.816v-8l8 3.993-8 4.007z"/>
         </svg>
+        <span class="brand-text">Noko Booster</span>
+    </div>
+    
+    <div class="container">
+        <div class="icon">
+            <svg viewBox="0 0 24 24">
+                ${isSuccess ? 
+                    '<path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>' :
+                    '<path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>'
+                }
+            </svg>
+        </div>
         <h1>${title}</h1>
         <p>${message}</p>
-        ${isSuccess ? 
-            '<a href="/auth/login" class="button">Go to Login</a>' : 
-            '<a href="/" class="button">Return Home</a>'
-        }
+        <a href="${process.env.CLIENT_URL}/login" class="button">
+            ${isSuccess ? 'Continue to Dashboard' : 'Try Again'}
+        </a>
     </div>
 </body>
 </html>
