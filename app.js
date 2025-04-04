@@ -41,7 +41,7 @@ const corsOptions = {
 app.use(cors(corsOptions));
 
   
-app.use(express.json());pp.use(cors({ origin: '*', credentials: true }));
+app.use(express.json());
 app.use(cookieParser());
 app.use(passport.initialize());
 // Serve static files from uploads directory
