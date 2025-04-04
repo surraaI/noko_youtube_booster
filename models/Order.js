@@ -17,12 +17,11 @@ const orderSchema = new Schema(
             }
         },
         thumbnail: {
-            type: String,
-            required: true,
-            validate: {
-                validator: v => /\.(jpg|jpeg|png|webp)$/.test(v),
-                message: 'Thumbnail must be an image file'
-            }
+            type: {
+                url: String,
+                public_id: String
+            },
+            required: true
         },
         channelName: {
             type: String,
@@ -41,12 +40,11 @@ const orderSchema = new Schema(
             }
         },
         paymentScreenshot: {
-            type: String,
-            required: true,
-            validate: {
-                validator: v => /\.(jpg|jpeg|png|webp)$/.test(v),
-                message: 'Payment proof must be an image file'
-            }
+            type: {
+                url: String,
+                public_id: String
+            },
+            required: true
         },
         description: {
             type: String,
@@ -82,7 +80,7 @@ const orderSchema = new Schema(
     }
 );
 
-// Virtual fields
+// Virtual fields (keep existing)
 orderSchema.virtual('remainingSubscribers').get(function() {
     return this.subscribersNeeded - this.subscribed;
 });
@@ -91,7 +89,7 @@ orderSchema.virtual('progress').get(function() {
     return ((this.subscribed / this.subscribersNeeded) * 100).toFixed(1);
 });
 
-// Pre-save validation
+// Pre-save validation (keep existing)
 orderSchema.pre('save', function(next) {
     if (this.isModified('amountPaid')) {
         this.subscribersNeeded = Math.floor(this.amountPaid / 10);

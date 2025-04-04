@@ -11,23 +11,30 @@ const subscriptionSchema = new Schema(
             type: Schema.Types.ObjectId,
             ref: 'Order',
             required: true,
-            unique: true,
         },
         screenshot: {
-            type: String, 
-            required: true,
+            type: {
+                url: String,
+                public_id: String
+            },
+            required: true
         },
         verified: {
             type: Boolean,
             default: false,
         },
     },
-    { timestamps: true }
+    { 
+        timestamps: true,
+        toObject: { virtuals: true },
+        toJSON: { virtuals: true }
+    }
 );
 
+// Compound unique index
 subscriptionSchema.index(
     { userId: 1, orderId: 1 }, 
     { unique: true, name: 'user_order_unique' }
-  );
+);
 
 module.exports = model('Subscription', subscriptionSchema);

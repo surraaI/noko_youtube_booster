@@ -75,19 +75,24 @@ const subscribe = async (req, res) => {
     const { orderId } = req.body;
     const userId = req.user.id;
 
-    // Validate input
     if (!req.file || !orderId) {
       await session.abortTransaction();
       session.endSession();
       return res.status(400).json({ message: 'Missing required fields' });
     }
 
+    // Get Cloudinary details from uploaded file
+    const screenshotInfo = {
+      url: req.file.path,
+      public_id: req.file.filename
+    };
+
     // Check existing subscription
     const existingSub = await Subscription.findOne({ userId, orderId }).session(session);
     if (existingSub) {
       await session.abortTransaction();
       session.endSession();
-      return res.status(409).json({ message: `you've already subscribed to the channel` });
+      return res.status(409).json({ message: 'You\'ve already subscribed to this channel' });
     }
 
     // Validate order
@@ -102,20 +107,22 @@ const subscribe = async (req, res) => {
 
     // Perform verification
     const username = extractUsernameFromLink(order.youtubeLink);
-    const extractedText = await extractText(req.file.path);
+    const extractedText = await extractText(screenshotInfo.url); // Use Cloudinary URL
     const isVerified = verifyContent(extractedText, username);
 
     if (!isVerified) {
       await session.abortTransaction();
       session.endSession();
-      return res.status(400).json({ message: 'Verification failed, upload clear screanshot of your subscription' });
+      return res.status(400).json({ 
+        message: 'Verification failed. Please upload a clear screenshot showing your subscription.' 
+      });
     }
 
     // Create subscription
     const subscription = await new Subscription({
       userId,
       orderId,
-      screenshot: req.file.path,
+      screenshot: screenshotInfo,
       verified: true
     }).save({ session });
 
@@ -149,13 +156,18 @@ const subscribe = async (req, res) => {
   } catch (error) {
     await session.abortTransaction();
     session.endSession();
-    
+
+    // Cleanup uploaded file if transaction failed
+    if (req.file?.filename) {
+      await cloudinary.uploader.destroy(req.file.filename);
+    }
+
     const statusCode = error instanceof mongoose.Error.ValidationError ? 400 : 500;
     return res.status(statusCode).json({
       message: error.message.startsWith('Invalid YouTube') 
-        ? 'Invalid YouTube channel' 
+        ? 'Invalid YouTube channel URL' 
         : 'Subscription processing failed',
-      error: error.message
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 };
@@ -219,6 +231,16 @@ const manualVerify = async (req, res) => {
     res.status(500).json({ message: 'Server error', error: error.message });
   } finally {
     session.endSession();
+  }
+};
+
+const deleteSubscriptionScreenshot = async (public_id) => {
+  try {
+    if (public_id) {
+      await cloudinary.uploader.destroy(public_id);
+    }
+  } catch (error) {
+    console.error('Error deleting subscription screenshot:', error);
   }
 };
 

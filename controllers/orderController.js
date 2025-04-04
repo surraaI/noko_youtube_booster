@@ -3,6 +3,7 @@ const Order = require('../models/Order');
 const User = require('../models/User');
 const Subscription = require('../models/Subscription');
 const config = require('../config/referralConfig');
+const { cloudinary } = require('../utils/cloudinary');
 
 
 // create Order 
@@ -21,14 +22,26 @@ const createOrder = async (req, res) => {
             });
         }
 
+        // Upload files to Cloudinary
+        const [thumbnailUpload, paymentUpload] = await Promise.all([
+            cloudinary.uploader.upload(req.files['thumbnail'][0].path),
+            cloudinary.uploader.upload(req.files['paymentScreenshot'][0].path)
+        ]);        
+
         const newOrder = new Order({
             userId: req.user.id,
             youtubeLink,
-            thumbnail: req.files['thumbnail'][0].path,
+            thumbnail: {
+                url: thumbnailUpload.secure_url,
+                public_id: thumbnailUpload.public_id
+            },
             channelName,
             amountPaid,
             description,
-            paymentScreenshot: req.files['paymentScreenshot'][0].path,
+            paymentScreenshot: {
+                url: paymentUpload.secure_url,
+                public_id: paymentUpload.public_id
+            },
             status: 'pending' 
         });
 
@@ -40,10 +53,71 @@ const createOrder = async (req, res) => {
         });
     } catch (error) {
         console.error('Error creating order:', error.message);
-        res.status(500).json({ message: error.message.includes('validation') ? error.message : 'Internal server error' });
+        res.status(500).json({ message: 'Internal server error' });
     }
 };
 
+// Modified updateOrder
+const updateOrder = async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+    }
+
+    try {
+        const order = await Order.findById(req.params.id);
+        if (!order) return res.status(404).json({ message: 'Order not found' });
+
+        if (order.userId.toString() !== req.user.id) {
+            return res.status(403).json({ message: 'Unauthorized access' });
+        }
+
+        if (['completed', 'canceled'].includes(order.status)) {
+            return res.status(400).json({ message: 'Cannot modify completed or canceled orders' });
+        }
+
+        // Handle file updates
+        const updateData = { ...req.body };
+        
+        if (req.files?.['paymentScreenshot']) {
+            // Delete old payment screenshot
+            if (order.paymentScreenshot?.public_id) {
+                await cloudinary.uploader.destroy(order.paymentScreenshot.public_id);
+            }
+            const paymentUpload = await cloudinary.uploader.upload(req.files['paymentScreenshot'][0].path);
+            updateData.paymentScreenshot = {
+                url: paymentUpload.secure_url,
+                public_id: paymentUpload.public_id
+            };
+        }
+
+        if (req.files?.['thumbnail']) {
+            // Delete old thumbnail
+            if (order.thumbnail?.public_id) {
+                await cloudinary.uploader.destroy(order.thumbnail.public_id);
+            }
+            const thumbnailUpload = await cloudinary.uploader.upload(req.files['thumbnail'][0].path);
+            updateData.thumbnail = {
+                url: thumbnailUpload.secure_url,
+                public_id: thumbnailUpload.public_id
+            };
+        }
+
+        const updatedOrder = await Order.findByIdAndUpdate(
+            req.params.id,
+            updateData,
+            { new: true, runValidators: true }
+        );
+
+        res.status(200).json({
+            message: 'Order updated successfully',
+            order: updatedOrder,
+        });
+    } catch (error) {
+        console.error('Error updating order:', error.message);
+        res.status(500).json({ message: 'Internal server error' });
+    }
+};
 // Get Orders - All active orders + user's own orders
 const getOrders = async (req, res) => {
     try {
@@ -107,55 +181,6 @@ const getOrderById = async (req, res) => {
         res.status(500).json({ message: 'Internal server error' });
     }
 };
-
-// Update Order - Only order owner can update
-const updateOrder = async (req, res) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-        return res.status(400).json({ errors: errors.array() });
-    }
-
-    try {
-        const order = await Order.findById(req.params.id);
-        if (!order) return res.status(404).json({ message: 'Order not found' });
-
-        // Authorization check - only owner can update
-        if (order.userId.toString() !== req.user.id) {
-            return res.status(403).json({ message: 'Unauthorized access' });
-        }
-
-        // Prevent updates to completed/canceled orders
-        if (['completed', 'canceled'].includes(order.status)) {
-            return res.status(400).json({ message: 'Cannot modify completed or canceled orders' });
-        }
-
-        // Prepare update data
-        const updateData = {
-            ...req.body,
-            ...(req.files?.['paymentScreenshot'] && { 
-                paymentScreenshot: req.files['paymentScreenshot'][0].path 
-            }),
-            ...(req.files?.['thumbnail'] && { 
-                thumbnail: req.files['thumbnail'][0].path 
-            })
-        };
-
-        const updatedOrder = await Order.findByIdAndUpdate(
-            req.params.id,
-            updateData,
-            { new: true, runValidators: true }
-        );
-
-        res.status(200).json({
-            message: 'Order updated successfully',
-            order: updatedOrder,
-        });
-    } catch (error) {
-        console.error('Error updating order:', error.message);
-        res.status(500).json({ message: error.message.includes('validation') ? error.message : 'Internal server error' });
-    }
-};
-
 
 // Verify Order (Admin)
 const verifyOrder = async (req, res) => {
