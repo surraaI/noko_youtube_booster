@@ -1,0 +1,5 @@
+@\p{L}{3,30}
+subscribed?
+following
+joined
+\d{1,2}:\d{2}

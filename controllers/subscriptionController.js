@@ -5,6 +5,8 @@ const Order = require('../models/Order');
 const User = require('../models/User');
 const sharp = require('sharp');
 const mongoose = require('mongoose');
+const axios = require('axios');
+const { cloudinary } = require('../utils/cloudinary');
 
 // Helper to extract username from YouTube link
 const extractUsernameFromLink = (youtubeLink) => {
@@ -15,28 +17,32 @@ const extractUsernameFromLink = (youtubeLink) => {
   return match[1].toLowerCase();
 };
 
-// OCR Text Extraction (updated character whitelist)
-const extractText = async (imagePath) => {
+// OCR Text Extraction with Cloudinary integration
+const extractText = async (imageUrl) => {
   try {
+    // Download image from Cloudinary
+    const response = await axios.get(imageUrl, { responseType: 'arraybuffer' });
+    const imageBuffer = Buffer.from(response.data, 'binary');
+
     // Preprocess image with Sharp
-    const processedImage = await sharp(imagePath)
-      .resize({ width: 2000, kernel: sharp.kernel.cubic }) // Higher quality scaling
-      .linear(1.1, -50) // Increase contrast
-      .modulate({ brightness: 1.2 }) // Brighten image
-      .median(3) // Reduce noise
-      .sharpen({ sigma: 2, flat: 1, jagged: 2 }) // Enhanced sharpening
-      .threshold(128, { adaptiveWindowSize: true }) // Adaptive thresholding
+    const processedImage = await sharp(imageBuffer)
+      .resize({ width: 2000, kernel: sharp.kernel.cubic })
+      .linear(1.1, -50)
+      .modulate({ brightness: 1.2 })
+      .median(3)
+      .sharpen({ sigma: 2, flat: 1, jagged: 2 })
+      .threshold(128, { adaptiveWindowSize: true })
       .toBuffer();
 
-      const { data: { text } } = await Tesseract.recognize(processedImage, 'eng', {
-        logger: info => console.debug(info),
-        tessedit_char_whitelist: '@abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_ ',
-        tessedit_pageseg_mode: 11, // Sparse text with orientation
-        tessedit_ocr_engine_mode: 4, // Default + LSTM only
-        preserve_interword_spaces: 1, // Maintain spacing
-        user_defined_dpi: 300, // Force high DPI processing
-        textord_min_linesize: 2.5, // Better for small text
-      });
+    const { data: { text } } = await Tesseract.recognize(processedImage, 'eng', {
+      logger: info => console.debug(info),
+      tessedit_char_whitelist: '@abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_ ',
+      tessedit_pageseg_mode: 11,
+      tessedit_ocr_engine_mode: 4,
+      preserve_interword_spaces: 1,
+      user_defined_dpi: 300,
+      textord_min_linesize: 2.5,
+    });
 
     return text.toLowerCase();
   } catch (error) {
@@ -50,7 +56,6 @@ const verifyContent = (extractedText, username) => {
   const targetUsername = username.toLowerCase().replace(/\s/g, '');
   const cleanText = extractedText.replace(/\s/g, '').replace(/[^a-z0-9@-_]/g, '');
 
-  // Fuzzy match for username (allowing minor OCR errors)
   const usernameRegex = new RegExp(
     `@?${targetUsername.split('').join('[ _-]?')}[ _-]?`,
     'i'
@@ -71,118 +76,115 @@ const verifyContent = (extractedText, username) => {
 
 // Updated Subscribe Controller
 const subscribe = async (req, res) => {
-  const session = await Order.startSession();
-  session.startTransaction();
-
+  const session = await mongoose.startSession();
   try {
-    const { orderId } = req.body;
-    const userId = req.user.id;
+    await session.withTransaction(async () => {
+      const { orderId } = req.body;
+      const userId = req.user.id;
 
-    if (!req.file || !orderId) {
-      await session.abortTransaction();
-      session.endSession();
-      return res.status(400).json({ message: 'Missing required fields' });
-    }
+      if (!req.file || !orderId) {
+        throw new Error('Missing required fields');
+      }
 
-    // Get Cloudinary details from uploaded file
-    const screenshotInfo = {
-      url: req.file.path,
-      public_id: req.file.filename
-    };
+      // Cloudinary configuration
+      const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+      const screenshotInfo = {
+        url: req.file.path.includes('http') 
+          ? req.file.path 
+          : `https://res.cloudinary.com/${cloudName}/image/upload/${req.file.path}`,
+        public_id: req.file.filename
+      };
 
-    // Check existing subscription
-    const existingSub = await Subscription.findOne({ userId, orderId }).session(session);
-    if (existingSub) {
-      await session.abortTransaction();
-      session.endSession();
-      return res.status(409).json({ message: 'You\'ve already subscribed to this channel' });
-    }
+      // Check existing subscription
+      const existingSub = await Subscription.findOne({ userId, orderId }).session(session);
+      if (existingSub) {
+        throw new Error('You have already subscribed to this channel');
+      }
 
-    // Validate order
-    const order = await Order.findById(orderId).session(session);
-    if (!order || order.userId.toString() === userId.toString()) {
-      await session.abortTransaction();
-      session.endSession();
-      return res.status(order ? 403 : 404).json({
-        message: order ? 'Cannot subscribe to own order' : 'Order not found'
-      });
-    }
+      // Validate order
+      const order = await Order.findById(orderId).session(session);
+      if (!order || order.userId.toString() === userId.toString()) {
+        throw new Error(order ? 'Cannot subscribe to own order' : 'Order not found');
+      }
 
-    // Perform verification
-    const username = extractUsernameFromLink(order.youtubeLink);
-    const extractedText = await extractText(screenshotInfo.url); // Use Cloudinary URL
-    const isVerified = verifyContent(extractedText, username);
+      // Perform verification
+      const username = extractUsernameFromLink(order.youtubeLink);
+      const extractedText = await extractText(screenshotInfo.url);
+      const isVerified = verifyContent(extractedText, username);
+      if (!isVerified) {
+        throw new Error('Verification failed');
+      }
 
-    if (!isVerified) {
-      await session.abortTransaction();
-      session.endSession();
-      return res.status(400).json({ 
-        message: 'Verification failed. Please upload a clear screenshot showing your subscription.' 
-      });
-    }
+      // Create subscription
+      const subscription = await Subscription.create([{
+        userId,
+        orderId,
+        screenshot: screenshotInfo,
+        verified: true
+      }], { session });
 
-    // Create subscription
-    const subscription = await new Subscription({
-      userId,
-      orderId,
-      screenshot: screenshotInfo,
-      verified: true
-    }).save({ session });
+      // Update order
+      const updatedOrder = await Order.findByIdAndUpdate(
+        orderId,
+        { 
+          $inc: { subscribed: 1 },
+          $set: { 
+            status: order.subscribed + 1 >= order.subscribersNeeded 
+              ? 'completed' 
+              : 'active' 
+          }
+        },
+        { new: true, session }
+      );
 
-    // Update order and user
-    order.subscribed += 1;
-    if (order.subscribed >= order.subscribersNeeded) {
-      order.status = 'completed';
-    }
-    
-    await Promise.all([
-      order.save({ session }),
-      User.findByIdAndUpdate(userId, 
+      // Update user
+      await User.findByIdAndUpdate(
+        userId,
         { $inc: { virtualGifts: 10 } },
         { session }
-      )
-    ]);
+      );
 
-    await session.commitTransaction();
-    session.endSession();
+      // Commit transaction before population
+      await session.commitTransaction();
 
-    return res.status(201).json({
-      message: 'Subscription verified and created',
-      subscription: {
-        ...subscription.toObject(),
-        orderId: subscription.orderId,
-        verified: subscription.verified
-      },
-      coinsAwarded: 10
+      // Get populated subscription
+      const populatedSub = await Subscription.findById(subscription[0]._id)
+        .populate('userId', 'name email')
+        .populate('orderId', 'channelName');
+
+      res.status(201).json({
+        message: 'Subscription verified and created',
+        subscription: populatedSub,
+        coinsAwarded: 10
+      });
     });
-    
   } catch (error) {
     await session.abortTransaction();
-    session.endSession();
-
-    // Cleanup uploaded file if transaction failed
+    
+    // Cleanup Cloudinary upload
     if (req.file?.filename) {
       await cloudinary.uploader.destroy(req.file.filename);
     }
 
-    const statusCode = error instanceof mongoose.Error.ValidationError ? 400 : 500;
-    return res.status(statusCode).json({
-      message: error.message.startsWith('Invalid YouTube') 
-        ? 'Invalid YouTube channel URL' 
-        : 'Subscription processing failed',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    console.error('Subscription Error:', error);
+    const statusCode = error.message.includes('already subscribed') ? 409 : 
+                      error.message.includes('Verification') ? 400 : 500;
+    
+    res.status(statusCode).json({
+      message: error.message,
+      error: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
+  } finally {
+    session.endSession();
   }
 };
 
-// controllers/subscriptionController.js
 const getAllSubscriptions = async (req, res) => {
   try {
-    // Filter subscriptions by current user
     const subscriptions = await Subscription.find({ userId: req.user.id })
       .populate('userId', 'name email')
       .populate('orderId', 'channelName');
-      
+    
     res.status(200).json({ subscriptions });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
@@ -207,11 +209,9 @@ const manualVerify = async (req, res) => {
       return res.status(400).json({ message: 'Already verified' });
     }
 
-    // Manual verification
     subscription.verified = true;
     await subscription.save({ session });
 
-    // Update order and user
     const [order, user] = await Promise.all([
       Order.findById(subscription.orderId).session(session),
       User.findById(subscription.userId).session(session)

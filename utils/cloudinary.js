@@ -9,11 +9,11 @@ cloudinary.config({
 
 const storage = new CloudinaryStorage({
   cloudinary: cloudinary,
-  params: {
+  params: async (req, file) => ({
     folder: 'noko-booster',
     allowed_formats: ['jpg', 'jpeg', 'png'],
-    transformation: [{ width: 500, height: 500, crop: 'limit' }]
-  }
+    public_id: `${Date.now()}-${file.originalname}`
+  })
 });
 
 module.exports = { cloudinary, storage };

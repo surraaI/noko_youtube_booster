@@ -23,17 +23,17 @@ connectDB();
 
 // Configure allowed origins
 const allowedOrigins = process.env.CLIENT_URL 
-  ? process.env.CLIENT_URL.split(',') 
+  ? process.env.CLIENT_URL.split(',').map(origin => origin.trim()) 
   : [];
 
 // Add debug logging
 const corsOptions = {
   origin: (origin, callback) => {
-    console.log(`[CORS] Incoming origin: ${origin} | Allowed: ${allowedOrigins}`);
+    // console.log(`[CORS] Incoming origin: ${origin} | Allowed: ${allowedOrigins}`);
     
     // Allow requests with no origin (non-browser clients)
     if (!origin) {
-      console.warn('[CORS] Allowing request with no origin');
+      // console.warn('[CORS] Allowing request with no origin');
       return callback(null, true);
     }
 
@@ -41,10 +41,10 @@ const corsOptions = {
       const regex = new RegExp(allowed.replace('*', '.*'));
       return regex.test(origin);
     })) {
-      console.log(`[CORS] Allowed: ${origin}`);
+      // console.log(`[CORS] Allowed: ${origin}`);
       callback(null, true);
     } else {
-      console.log(`[CORS] Blocked: ${origin}`);
+      // console.log(`[CORS] Blocked: ${origin}`);
       callback(new Error('Not allowed by CORS'));
     }
   },
