@@ -20,11 +20,9 @@ const extractUsernameFromLink = (youtubeLink) => {
 // OCR Text Extraction with Cloudinary integration
 const extractText = async (imageUrl) => {
   try {
-    // Download image from Cloudinary
     const response = await axios.get(imageUrl, { responseType: 'arraybuffer' });
     const imageBuffer = Buffer.from(response.data, 'binary');
 
-    // Preprocess image with Sharp
     const processedImage = await sharp(imageBuffer)
       .resize({ width: 2000, kernel: sharp.kernel.cubic })
       .linear(1.1, -50)
@@ -74,7 +72,7 @@ const verifyContent = (extractedText, username) => {
   return hasUsername && hasSubscribed;
 };
 
-// Updated Subscribe Controller
+// Updated Subscribe Controller with proper transaction handling
 const subscribe = async (req, res) => {
   const session = await mongoose.startSession();
   try {
@@ -86,7 +84,6 @@ const subscribe = async (req, res) => {
         throw new Error('Missing required fields');
       }
 
-      // Cloudinary configuration
       const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
       const screenshotInfo = {
         url: req.file.path.includes('http') 
@@ -95,19 +92,16 @@ const subscribe = async (req, res) => {
         public_id: req.file.filename
       };
 
-      // Check existing subscription
       const existingSub = await Subscription.findOne({ userId, orderId }).session(session);
       if (existingSub) {
         throw new Error('You have already subscribed to this channel');
       }
 
-      // Validate order
       const order = await Order.findById(orderId).session(session);
       if (!order || order.userId.toString() === userId.toString()) {
         throw new Error(order ? 'Cannot subscribe to own order' : 'Order not found');
       }
 
-      // Perform verification
       const username = extractUsernameFromLink(order.youtubeLink);
       const extractedText = await extractText(screenshotInfo.url);
       const isVerified = verifyContent(extractedText, username);
@@ -115,16 +109,14 @@ const subscribe = async (req, res) => {
         throw new Error('Verification failed');
       }
 
-      // Create subscription
-      const subscription = await Subscription.create([{
+      const [subscription] = await Subscription.create([{
         userId,
         orderId,
         screenshot: screenshotInfo,
         verified: true
       }], { session });
 
-      // Update order
-      const updatedOrder = await Order.findByIdAndUpdate(
+      await Order.findByIdAndUpdate(
         orderId,
         { 
           $inc: { subscribed: 1 },
@@ -137,18 +129,13 @@ const subscribe = async (req, res) => {
         { new: true, session }
       );
 
-      // Update user
       await User.findByIdAndUpdate(
         userId,
         { $inc: { virtualGifts: 10 } },
         { session }
       );
 
-      // Commit transaction before population
-      await session.commitTransaction();
-
-      // Get populated subscription
-      const populatedSub = await Subscription.findById(subscription[0]._id)
+      const populatedSub = await Subscription.findById(subscription._id)
         .populate('userId', 'name email')
         .populate('orderId', 'channelName');
 
@@ -157,11 +144,12 @@ const subscribe = async (req, res) => {
         subscription: populatedSub,
         coinsAwarded: 10
       });
+    }, { 
+      readPreference: 'primary',
+      readConcern: { level: 'local' },
+      writeConcern: { w: 'majority' }
     });
   } catch (error) {
-    await session.abortTransaction();
-    
-    // Cleanup Cloudinary upload
     if (req.file?.filename) {
       await cloudinary.uploader.destroy(req.file.filename);
     }
@@ -175,9 +163,10 @@ const subscribe = async (req, res) => {
       error: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   } finally {
-    session.endSession();
+    await session.endSession();
   }
 };
+
 
 const getAllSubscriptions = async (req, res) => {
   try {
