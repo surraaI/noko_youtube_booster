@@ -52,6 +52,10 @@ userSchema.pre('save', async function(next) {
     }
     next();
   });
-  
+
+  userSchema.add({
+    forcePasswordChange: { type: Boolean, default: false },
+    temporaryPassword: { type: String }
+  });
 
 module.exports = model('User', userSchema);
