@@ -163,7 +163,7 @@ const renderVerificationPage = (title, message, isSuccess = true) => `
         </div>
         <h1>${title}</h1>
         <p>${message}</p>
-        <a href="${process.env.CLIENT_URL}/login" class="button">
+        <a href="${process.env.BACKEND_URL}/login" class="button">
             ${isSuccess ? 'Continue to Dashboard' : 'Try Again'}
         </a>
     </div>
@@ -319,7 +319,10 @@ exports.login = async (req, res) => {
             maxAge: 7 * 24 * 60 * 60 * 1000,
         });
 
-        res.json({ accessToken });
+        res.json({ 
+            accessToken,
+            requiresPasswordChange: user.forcePasswordChange
+          });
     } catch (error) {
         res.status(500).json({ message: 'Internal server error' });
     }
@@ -494,5 +497,26 @@ exports.verifyPasswordForTransaction = async (req, res) => {
       res.json({ transactionToken });
     } catch (error) {
       res.status(500).json({ error: 'Verification failed' });
+    }
+  };
+
+  exports.changePassword = async (req, res) => {
+    try {
+      const user = await User.findById(req.user.id);
+      const { currentPassword, newPassword } = req.body;
+  
+      if (!(await bcrypt.compare(currentPassword, user.password))) {
+        return res.status(400).json({ message: 'Current password is incorrect' });
+      }
+  
+      const salt = await bcrypt.genSalt(12);
+      user.password = await bcrypt.hash(newPassword, salt);
+      user.forcePasswordChange = false;
+      user.temporaryPassword = undefined;
+      await user.save();
+  
+      res.json({ message: 'Password changed successfully' });
+    } catch (error) {
+      res.status(500).json({ message: 'Error changing password' });
     }
   };
