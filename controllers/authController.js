@@ -163,7 +163,7 @@ const renderVerificationPage = (title, message, isSuccess = true) => `
         </div>
         <h1>${title}</h1>
         <p>${message}</p>
-        <a href="${process.env.BACKEND_URL}/login" class="button">
+        <a href="${process.env.CLIENT_URL}/login" class="button">
             ${isSuccess ? 'Continue to Dashboard' : 'Try Again'}
         </a>
     </div>
@@ -389,7 +389,7 @@ exports.forgotPassword = async (req, res) => {
         await user.save();
 
         // Send email with reset link
-        const resetUrl = `${process.env.BACKEND_URL}/reset-password?token=${encodeURIComponent(resetToken)}&id=${user._id}`;
+        const resetUrl = `${process.env.CLIENT_URL}/reset-password?token=${encodeURIComponent(resetToken)}&id=${user._id}`;
         await transporter.sendMail({
             to: user.email,
             subject: 'Password Reset Request - Noko Auth',
