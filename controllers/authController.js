@@ -389,7 +389,7 @@ exports.forgotPassword = async (req, res) => {
         await user.save();
 
         // Send email with reset link
-        const resetUrl = `${process.env.CLIENT_URL}/reset-password?token=${encodeURIComponent(resetToken)}&id=${user._id}`;
+        const resetUrl = `${process.env.BACKEND_URL}/reset-password?token=${encodeURIComponent(resetToken)}&id=${user._id}`;
         await transporter.sendMail({
             to: user.email,
             subject: 'Password Reset Request - Noko Auth',
