@@ -27,39 +27,24 @@ const allowedOrigins = process.env.CLIENT_URL
   : [];
 
 // Add debug logging
+// Remove the complex origin checking and simplify CORS
 const corsOptions = {
-  origin: (origin, callback) => {
-    // console.log(`[CORS] Incoming origin: ${origin} | Allowed: ${allowedOrigins}`);
-    
-    // Allow requests with no origin (non-browser clients)
-    if (!origin) {
-      // console.warn('[CORS] Allowing request with no origin');
-      return callback(null, true);
-    }
-
-    if (allowedOrigins.some(allowed => {
-      const regex = new RegExp(allowed.replace('*', '.*'));
-      return regex.test(origin);
-    })) {
-      // console.log(`[CORS] Allowed: ${origin}`);
-      callback(null, true);
-    } else {
-      // console.log(`[CORS] Blocked: ${origin}`);
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
+  origin: process.env.NODE_ENV === 'production'
+    ? 'https://your-frontend-domain.com' // Replace with actual frontend URL
+    : true, // Allow all in development
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  optionsSuccessStatus: 204
+  allowedHeaders: [
+    'Content-Type', 
+    'Authorization', 
+    'X-Transaction-Token'
+  ],
+  optionsSuccessStatus: 200
 };
 
-// Apply CORS middleware
+// Simplify CORS middleware usage
 app.use(cors(corsOptions));
-
-// Handle OPTIONS requests for all routes
-app.options('*', cors(corsOptions));
-
+app.options('*', cors(corsOptions)); // Handle preflight for all routes
 // Standard middleware
 app.use(express.json());
 app.use(cookieParser());
