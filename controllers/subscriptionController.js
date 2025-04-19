@@ -1,5 +1,5 @@
 // controllers/subscriptionController.js
-const Tesseract = require('tesseract.js');
+const { ImageAnnotatorClient } = require('@google-cloud/vision');
 const Subscription = require('../models/Subscription');
 const Order = require('../models/Order');
 const User = require('../models/User');
@@ -7,6 +7,9 @@ const sharp = require('sharp');
 const mongoose = require('mongoose');
 const axios = require('axios');
 const { cloudinary } = require('../utils/cloudinary');
+
+// Initialize Google Cloud Vision client
+const visionClient = new ImageAnnotatorClient();
 
 // Helper to extract username from YouTube link
 const extractUsernameFromLink = (youtubeLink) => {
@@ -17,12 +20,13 @@ const extractUsernameFromLink = (youtubeLink) => {
   return match[1].toLowerCase();
 };
 
-// OCR Text Extraction with Cloudinary integration
+// Updated OCR Text Extraction with Google Cloud Vision
 const extractText = async (imageUrl) => {
   try {
     const response = await axios.get(imageUrl, { responseType: 'arraybuffer' });
     const imageBuffer = Buffer.from(response.data, 'binary');
 
+    // Image preprocessing remains similar
     const processedImage = await sharp(imageBuffer)
       .resize({ width: 2000, kernel: sharp.kernel.cubic })
       .linear(1.1, -50)
@@ -32,24 +36,25 @@ const extractText = async (imageUrl) => {
       .threshold(128, { adaptiveWindowSize: true })
       .toBuffer();
 
-    const { data: { text } } = await Tesseract.recognize(processedImage, 'eng', {
-      logger: info => console.debug(info),
-      tessedit_char_whitelist: '@abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_ ',
-      tessedit_pageseg_mode: 11,
-      tessedit_ocr_engine_mode: 4,
-      preserve_interword_spaces: 1,
-      user_defined_dpi: 300,
-      textord_min_linesize: 2.5,
+    // Google Cloud Vision OCR
+    const [result] = await visionClient.textDetection({
+      image: {
+        content: processedImage.toString('base64')
+      },
+      imageContext: {
+        languageHints: ['en']
+      }
     });
 
-    return text.toLowerCase();
+    const extractedText = result.fullTextAnnotation?.text?.toLowerCase() || '';
+    return extractedText;
   } catch (error) {
     console.error('OCR Error:', error);
     return '';
   }
 };
 
-// Enhanced Verification Check with fuzzy matching
+// Enhanced Verification Check (remains mostly the same)
 const verifyContent = (extractedText, username) => {
   const targetUsername = username.toLowerCase().replace(/\s/g, '');
   const cleanText = extractedText.replace(/\s/g, '').replace(/[^a-z0-9@-_]/g, '');
@@ -72,7 +77,7 @@ const verifyContent = (extractedText, username) => {
   return hasUsername && hasSubscribed;
 };
 
-// Updated Subscribe Controller with proper transaction handling
+// Updated Subscribe Controller (main structure remains same)
 const subscribe = async (req, res) => {
   const session = await mongoose.startSession();
   try {
@@ -166,7 +171,6 @@ const subscribe = async (req, res) => {
     await session.endSession();
   }
 };
-
 
 const getAllSubscriptions = async (req, res) => {
   try {
