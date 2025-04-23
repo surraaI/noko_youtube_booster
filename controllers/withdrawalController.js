@@ -1,3 +1,4 @@
+// Withdrawal Controller
 const Withdrawal = require('../models/Withdrawal');
 const User = require('../models/User');
 const jwt = require('jsonwebtoken');
@@ -9,13 +10,11 @@ const ALGORITHM = 'aes-256-ctr';
 const KEY_LENGTH = 32;
 const IV_LENGTH = 16;
 
-const deriveKey = () => {
-  return crypto.scryptSync(
-    process.env.ENCRYPTION_SECRET,
-    process.env.ENCRYPTION_SALT,
-    KEY_LENGTH
-  );
-};
+const deriveKey = () => crypto.scryptSync(
+  process.env.ENCRYPTION_SECRET,
+  process.env.ENCRYPTION_SALT,
+  KEY_LENGTH
+);
 
 const encrypt = (text) => {
   const iv = crypto.randomBytes(IV_LENGTH);
@@ -28,13 +27,9 @@ const safeDecrypt = (encryptedText) => {
   try {
     const [ivPart, dataPart] = encryptedText.split(':');
     if (!ivPart || !dataPart) throw new Error('Invalid encrypted text');
-    
     const iv = Buffer.from(ivPart, 'hex');
     const decipher = crypto.createDecipheriv(ALGORITHM, deriveKey(), iv);
-    return Buffer.concat([
-      decipher.update(Buffer.from(dataPart, 'hex')), 
-      decipher.final()
-    ]).toString();
+    return Buffer.concat([decipher.update(Buffer.from(dataPart, 'hex')), decipher.final()]).toString();
   } catch (error) {
     console.error('Decryption error:', error);
     throw new Error('Invalid encrypted data');
@@ -284,24 +279,17 @@ exports.getPendingWithdrawals = async (req, res) => {
 };
 
 exports.processWithdrawal = async (req, res) => {
-  const session = await Withdrawal.startSession();
-  session.startTransaction();
-
   try {
-    const withdrawal = await Withdrawal.findById(req.params.id)
-      .session(session)
-      .populate('user');
-
-    if (!withdrawal) throw new Error('Withdrawal not found');
-    if (withdrawal.status !== 'pending') {
-      throw new Error('Withdrawal already processed');
-    }
+    const withdrawal = await Withdrawal.findById(req.params.id).populate('user');
+    if (!withdrawal) return res.status(404).json({ error: 'Withdrawal not found' });
+    if (withdrawal.status !== 'pending') return res.status(400).json({ error: 'Already processed' });
 
     withdrawal.status = req.body.status;
     withdrawal.verifiedBy = req.user.id;
     withdrawal.verificationNote = req.body.note;
     withdrawal.verifiedAt = new Date();
 
+    // Only restore balance if rejected
     if (req.body.status === 'rejected') {
       await User.findByIdAndUpdate(
         withdrawal.user._id,
@@ -310,14 +298,12 @@ exports.processWithdrawal = async (req, res) => {
             virtualGifts: withdrawal.virtualGiftsDeducted,
             referralBalance: withdrawal.referralBalanceDeducted
           }
-        },
-        { session }
+        }
       );
     }
 
-    await withdrawal.save({ session });
+    await withdrawal.save();
 
-    // Audit log entry
     await AuditLog.create({
       user: req.user.id,
       action: `WITHDRAWAL_${req.body.status.toUpperCase()}`,
@@ -332,25 +318,15 @@ exports.processWithdrawal = async (req, res) => {
       }
     });
 
-    await session.commitTransaction();
-    
     res.json({
       message: `Withdrawal ${req.body.status} successfully`,
       withdrawal: {
-        ...withdrawal.toObject(),
-        bankDetails: {
-          accountNumber: `••••${safeDecrypt(withdrawal.bankDetails.accountNumber).slice(-4)}`
-        }
+        _id: withdrawal._id,
+        status: withdrawal.status
       }
     });
   } catch (error) {
-    await session.abortTransaction();
-    res.status(400).json({ 
-      error: error.message,
-      code: 'WITHDRAWAL_PROCESSING_ERROR'
-    });
-  } finally {
-    session.endSession();
+    res.status(500).json({ error: error.message, code: 'WITHDRAWAL_PROCESSING_ERROR' });
   }
 };
 
