@@ -478,27 +478,43 @@ exports.resendVerification = async (req, res) => {
 // Verify password for transaction
 exports.verifyPasswordForTransaction = async (req, res) => {
     try {
-      const user = await User.findById(req.user.id).select('+password');
-      
-      if (!await bcrypt.compare(req.body.password, user.password)) {
-        return res.status(401).json({ error: 'Invalid password' });
-      }
-  
-      const transactionToken = jwt.sign(
-        { 
-          userId: user._id, 
-          purpose: 'withdrawal', // Must match middleware check
-          iat: Math.floor(Date.now() / 1000) // Current timestamp in seconds
-        },
-        process.env.JWT_SECRET,
-        { expiresIn: '5m' } // 5 minutes expiration
-      );
-  
-      res.json({ transactionToken });
+        const user = await User.findById(req.user.id).select('+password');
+
+
+        if (!user) {
+            console.error('[ERROR] User not found');
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        const isMatch = await bcrypt.compare(req.body.password, user.password);
+
+        if (!isMatch) {
+            return res.status(401).json({ error: 'Invalid password' });
+        }
+
+        const transactionToken = jwt.sign(
+            { 
+                userId: user._id.toString(),
+                purpose: 'withdrawal',
+                iat: Math.floor(Date.now() / 1000)
+            },
+            process.env.JWT_SECRET,
+            { expiresIn: '5m' }
+        );
+        res.json({ transactionToken });
+
     } catch (error) {
-      res.status(500).json({ error: 'Verification failed' });
+        console.error('[ERROR] Verification failed:', {
+            message: error.message,
+            stack: error.stack,
+            bodyReceived: req.body
+        });
+        res.status(500).json({ 
+            error: 'Verification failed',
+            debugInfo: process.env.NODE_ENV === 'development' ? error.message : null
+        });
     }
-  };
+};
 
   exports.changePassword = async (req, res) => {
     try {
