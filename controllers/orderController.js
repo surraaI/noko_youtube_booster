@@ -4,6 +4,7 @@ const User = require('../models/User');
 const Subscription = require('../models/Subscription');
 const config = require('../config/referralConfig');
 const { cloudinary } = require('../utils/cloudinary');
+const AuditLog = require('../models/AuditLog'); 
 
 
 // create Order 
@@ -22,7 +23,6 @@ const createOrder = async (req, res) => {
             });
         }
 
-        // Upload files to Cloudinary
         const [thumbnailUpload, paymentUpload] = await Promise.all([
             cloudinary.uploader.upload(req.files['thumbnail'][0].path),
             cloudinary.uploader.upload(req.files['paymentScreenshot'][0].path)
@@ -46,7 +46,19 @@ const createOrder = async (req, res) => {
         });
 
         const savedOrder = await newOrder.save();
-        
+
+        // 🔥 Create notification for admins
+        await AuditLog.create({
+            user: req.user.id,
+            action: 'ORDER_CREATED',
+            metadata: {
+              orderId: savedOrder._id,
+              createdBy: req.user.id
+            },
+            ipAddress: req.ip || req.headers['x-forwarded-for'] || req.connection.remoteAddress,
+            userAgent: req.headers['user-agent'] || 'Unknown'
+          });
+
         res.status(201).json({
             message: 'Order created successfully',
             order: savedOrder,
@@ -251,7 +263,55 @@ const cancelOrder = async (req, res) => {
     }
 };
 
+// Get pending orders (Admins)
+const getPendingOrders = async (req, res) => {
+    try {
+        const pendingOrders = await Order.find({ status: 'pending' })
+            .populate('userId', 'name email')
+            .sort({ createdAt: -1 });
 
+        res.status(200).json(pendingOrders);
+    } catch (error) {
+        console.error('Error fetching pending orders:', error.message);
+        res.status(500).json({ message: 'Internal server error' });
+    }
+};
+
+// Approve or reject pending order (Admins)
+const reviewOrder = async (req, res) => {
+    try {
+        const { decision } = req.body; // decision = 'approved' or 'rejected'
+        const order = await Order.findById(req.params.id);
+
+        if (!order) {
+            return res.status(404).json({ message: 'Order not found' });
+        }
+
+        if (order.status !== 'pending') {
+            return res.status(400).json({ message: 'Only pending orders can be reviewed' });
+        }
+
+        if (decision === 'approved') {
+            order.status = 'active';
+            order.verifiedBy = req.user.id;
+            order.verifiedAt = new Date();
+        } else if (decision === 'rejected') {
+            order.status = 'canceled';
+        } else {
+            return res.status(400).json({ message: 'Invalid decision' });
+        }
+
+        await order.save();
+
+        res.status(200).json({
+            message: `Order ${decision} successfully`,
+            order
+        });
+    } catch (error) {
+        console.error('Error reviewing order:', error.message);
+        res.status(500).json({ message: 'Internal server error' });
+    }
+};
 
 module.exports = { 
     createOrder, 
@@ -259,5 +319,7 @@ module.exports = {
     getOrderById,
     updateOrder, 
     verifyOrder, 
-    cancelOrder, 
+    cancelOrder,
+    getPendingOrders,
+    reviewOrder 
 };

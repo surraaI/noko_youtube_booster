@@ -1,4 +1,3 @@
-// routes/orderRoutes.js
 const express = require('express');
 const router = express.Router();
 const { 
@@ -7,16 +6,15 @@ const {
     getOrderById,
     updateOrder, 
     verifyOrder, 
-    cancelOrder, 
-    subscribeToOrder 
-
+    cancelOrder,
+    getPendingOrders,
+    reviewOrder
 } = require('../controllers/orderController');
 const { authMiddleware } = require('../middlewares/authMiddleware');
-const  { roleMiddleware } = require('../middlewares/roleMiddleware');
+const { roleMiddleware } = require('../middlewares/roleMiddleware');
 const { upload } = require('../middlewares/fileUploadMiddleware');
 
-
-
+// User creates order
 router.post('/create-order', 
     authMiddleware, 
     upload.fields([
@@ -24,11 +22,13 @@ router.post('/create-order',
       { name: 'thumbnail', maxCount: 1 }
     ]), 
     createOrder
-  );
+);
 
+// User and Admin view orders
 router.get('/', authMiddleware, getOrders);
 router.get('/:id', authMiddleware, getOrderById);
 
+// User updates order
 router.patch('/:id', 
     authMiddleware, 
     upload.fields([
@@ -36,10 +36,18 @@ router.patch('/:id',
       { name: 'thumbnail', maxCount: 1 }
     ]), 
     updateOrder
-  );
+);
 
+// Admin verify order (existing one)
+router.patch('/:id/verify', authMiddleware, roleMiddleware(['admin']), verifyOrder);
 
-router.patch('/:id/verify', authMiddleware,  roleMiddleware(['admin']) , verifyOrder);
+// Admin view pending orders
+router.get('/pending', authMiddleware, roleMiddleware(['admin']), getPendingOrders);
+
+// Admin approve or reject order
+router.patch('/:id/review', authMiddleware, roleMiddleware(['admin']), reviewOrder);
+
+// User cancels order
 router.delete('/:id', authMiddleware, cancelOrder);
 
 module.exports = router;
