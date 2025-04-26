@@ -5,6 +5,7 @@ const { authMiddleware } = require('../middlewares/authMiddleware');
 const { roleMiddleware } = require('../middlewares/roleMiddleware');
 const { verifyTransactionToken } = require('../middlewares/transactionAuth'); 
 const { verifyPasswordForTransaction } = require('../controllers/authController');
+const { getLeaderboard } = require('../controllers/withdrawalController');
 
 // 🔐 Users verify their password for withdrawal
 router.post('/verify-password', 
@@ -45,5 +46,7 @@ router.get('/:id/details',
   roleMiddleware(['admin', 'superAdmin']),
   withdrawalController.getSecureDetails
 );
+
+router.get('/leaderboard', authMiddleware, getLeaderboard);
 
 module.exports = router;

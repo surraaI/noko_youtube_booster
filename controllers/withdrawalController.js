@@ -349,3 +349,23 @@ exports.getSecureDetails = async (req, res) => {
     res.status(400).json({ error: error.message });
   }
 };
+
+// Leaderboard: Top Earners
+exports.getLeaderboard = async (req, res) => {
+  try {
+    const topUsers = await User.find({ role: 'user' })
+      .sort({ totalEarnings: -1 }) // Sort by highest earnings
+      .limit(20) // Top 20 users
+      .select('name email totalEarnings virtualGifts withdrawnAmount') // Select necessary fields only
+      .lean();
+
+    res.json({ leaderboard: topUsers });
+  } catch (error) {
+    console.error('Leaderboard fetch error:', error.message);
+    res.status(500).json({ 
+      code: 'LEADERBOARD_FETCH_ERROR',
+      message: 'Failed to fetch leaderboard',
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
+  }
+};
