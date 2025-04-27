@@ -12,6 +12,7 @@ const orderRoutes = require('./routes/orderRoutes');
 const subscriptionRoutes = require('./routes/subscriptionRoutes');
 const referralRoutes = require('./routes/referralRoutes');
 const userRoutes = require('./routes/userRoutes');
+const superadminRoutes = require('./routes/superadminRoutes');
 const withdrawalRoutes = require('./routes/withdrawalRoutes');
 
 dotenv.config();
@@ -62,6 +63,7 @@ app.use('/orders', orderRoutes);
 app.use('/subscriptions', subscriptionRoutes);
 app.use('/referrals', referralRoutes);
 app.use('/users', userRoutes);
+app.use('/superadmin', superadminRoutes);
 app.use('/withdrawals', withdrawalRoutes);
 
 // Base route
