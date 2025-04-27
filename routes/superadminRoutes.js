@@ -1,7 +1,7 @@
 // routes/adminRoutes.js
 const express = require('express');
 const router = express.Router();
-const adminController = require('../controllers/adminController');
+const adminController = require('../controllers/superadminController');
 const { authMiddleware } = require('../middleware/authMiddleware');
 const { roleMiddleware } = require('../middleware/roleMiddleware');
 
@@ -28,5 +28,10 @@ router.delete(
   roleMiddleware(['superAdmin']),
   adminController.deactivateAdmin
 );
+
+router.get('/superadmin/metrics', authMiddleware, roleMiddleware(['superAdmin']), superadminController.getPlatformMetrics);
+router.get('/superadmin/withdrawals', authMiddleware, roleMiddleware(['superAdmin']), superadminController.getAllWithdrawals);
+router.get('/superadmin/notifications', authMiddleware, roleMiddleware(['superAdmin']), superadminController.getPlatformNotifications);
+
 
 module.exports = router;
