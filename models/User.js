@@ -14,7 +14,8 @@ const userSchema = new Schema(
           default: 'user' 
         },
         isVerified: { type: Boolean, default: false },
-        referralCode: { type: String, unique: true },
+        referralCode: { type: String, unique: true,
+          sparse: true },
         referredBy: { type: Schema.Types.ObjectId, ref: 'User' },
         referralBalance: { type: Number, default: 0 },
         totalReferrals: { type: Number, default: 0 },
@@ -37,7 +38,7 @@ userSchema.pre('save', async function(next) {
       }
     }
 
-    if (!this.referralCode && this.role === 'user') {
+    if (!this.referralCode) {
       const generateCode = async () => {
         const random = Math.random().toString(36).substr(2, 6).toUpperCase();
         return `${this._id.toString().slice(-4)}${random}`;
