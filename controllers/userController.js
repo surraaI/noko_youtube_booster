@@ -18,16 +18,23 @@ exports.getCurrentUser = asyncHandler(async (req, res) => {
 });
 
 exports.updateUserProfile = asyncHandler(async (req, res) => {
-  const { name, phone } = req.body;
-  
+  const { name, phone, profileImage } = req.body;
+
   const updatedUser = await User.findByIdAndUpdate(
     req.user._id,
-    { $set: { name, phone } },
+    {
+      $set: {
+        name,
+        phone,
+        ...(profileImage && { profileImage }) // only update if image is included
+      }
+    },
     { new: true, runValidators: true }
   ).select('-password -passwordResetToken -passwordResetExpires');
 
   res.status(200).json(updatedUser);
 });
+
 
 exports.getCoinStats = asyncHandler(async (req, res) => {
   const user = await User.findById(req.user._id)
