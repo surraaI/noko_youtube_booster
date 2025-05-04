@@ -356,7 +356,7 @@ exports.getLeaderboard = async (req, res) => {
     const topUsers = await User.find({ role: 'user' })
       .sort({ totalEarnings: -1 }) // Sort by highest earnings
       .limit(20) // Top 20 users
-      .select('name email totalEarnings virtualGifts withdrawnAmount') // Select necessary fields only
+      .select('name email totalEarnings virtualGifts withdrawnAmount profileImage') // Select necessary fields only
       .lean();
 
     res.json({ leaderboard: topUsers });
