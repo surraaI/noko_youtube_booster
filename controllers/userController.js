@@ -41,3 +41,20 @@ exports.getCoinStats = asyncHandler(async (req, res) => {
     withdrawnAmount: user.withdrawnAmount
   });
 });
+
+exports.uploadAvatar = asyncHandler(async (req, res) => {
+  if (!req.file || !req.file.path) {
+    return res.status(400).json({ message: 'No file uploaded' });
+  }
+
+  const user = await User.findByIdAndUpdate(
+    req.user._id,
+    { profileImage: req.file.path },
+    { new: true }
+  ).select('-password -passwordResetToken -passwordResetExpires');
+
+  res.status(200).json({
+    message: 'Avatar uploaded successfully',
+    profileImage: req.file.path,
+  });
+});
