@@ -120,7 +120,7 @@ exports.deactivateAdmin = async (req, res) => {
     const { id } = req.params;
     const admin = await User.findOneAndUpdate(
       { _id: id, role: 'admin' },
-      { isActive: false },
+      { role: 'user' },
       { new: true, session }
     );
 
