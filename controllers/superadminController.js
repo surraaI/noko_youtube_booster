@@ -222,3 +222,42 @@ exports.getPlatformNotifications = async (req, res) => {
     res.status(500).json({ success: false, message: 'Failed to fetch notifications' });
   }
 };
+
+exports.getGrowthMetrics = async (req, res) => {
+  try {
+    const today = new Date();
+    const past30Days = new Date();
+    past30Days.setDate(today.getDate() - 30);
+
+    const [userGrowth, withdrawalGrowth, orderGrowth, paymentGrowth] = await Promise.all([
+      User.aggregate([
+        { $match: { createdAt: { $gte: past30Days } } },
+        { $group: { _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } }, count: { $sum: 1 } } },
+        { $sort: { _id: 1 } }
+      ]),
+      Withdrawal.aggregate([
+        { $match: { createdAt: { $gte: past30Days } } },
+        { $group: { _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } }, count: { $sum: 1 } } },
+        { $sort: { _id: 1 } }
+      ]),
+      Order.aggregate([
+        { $match: { createdAt: { $gte: past30Days } } },
+        { $group: { _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } }, count: { $sum: 1 } } },
+        { $sort: { _id: 1 } }
+      ]),
+      Order.aggregate([
+        { $match: { createdAt: { $gte: past30Days } } },
+        { $group: { _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } }, total: { $sum: "$amountPaid" } } },
+        { $sort: { _id: 1 } }
+      ])
+    ]);
+
+    res.json({
+      success: true,
+      data: { userGrowth, withdrawalGrowth, orderGrowth, paymentGrowth }
+    });
+  } catch (error) {
+    console.error('Growth Metrics Error:', error.message);
+    res.status(500).json({ success: false, message: 'Failed to fetch growth metrics' });
+  }
+};

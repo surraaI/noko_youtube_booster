@@ -32,6 +32,7 @@ router.delete(
 router.get('/metrics', authMiddleware, roleMiddleware(['superAdmin']), superadminController.getPlatformMetrics);
 router.get('/withdrawals', authMiddleware, roleMiddleware(['superAdmin']), superadminController.getAllWithdrawals);
 router.get('/notifications', authMiddleware, roleMiddleware(['superAdmin']), superadminController.getPlatformNotifications);
+router.get('/growth-metrics', authMiddleware, roleMiddleware(['superAdmin']), superadminController.getGrowthMetrics);
 
 
 module.exports = router;
