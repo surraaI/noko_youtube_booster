@@ -26,6 +26,10 @@ router.post('/create-order',
 
 // User and Admin view orders
 router.get('/', authMiddleware, getOrders);
+
+// Admin view pending orders
+router.get('/pending', authMiddleware, roleMiddleware(['admin']), getPendingOrders);
+
 router.get('/:id', authMiddleware, getOrderById);
 
 // User updates order
@@ -41,8 +45,6 @@ router.patch('/:id',
 // Admin verify order (existing one)
 router.patch('/:id/verify', authMiddleware, roleMiddleware(['admin']), verifyOrder);
 
-// Admin view pending orders
-router.get('/pending', authMiddleware, roleMiddleware(['admin']), getPendingOrders);
 
 // Admin approve or reject order
 router.patch('/:id/review', authMiddleware, roleMiddleware(['admin']), reviewOrder);
