@@ -369,3 +369,59 @@ exports.getLeaderboard = async (req, res) => {
     });
   }
 };
+
+exports.getProcessedWithdrawals = async (req, res) => {
+  try {
+    const processed = await Withdrawal.find({
+      verifiedBy: req.user.id,
+      status: { $in: ['approved', 'rejected'] }
+    })
+      .populate('user', 'name email')
+      .sort({ verifiedAt: -1 });
+
+    const result = processed.map(w => {
+      try {
+        const accountNumber = w.bankDetails?.accountNumber
+          ? `••••${safeDecrypt(w.bankDetails.accountNumber).slice(-4)}`
+          : 'N/A';
+
+        const bankName = w.bankDetails?.bankName
+          ? safeDecrypt(w.bankDetails.bankName)
+          : 'Hidden';
+
+        return {
+          _id: w._id,
+          amount: w.amount,
+          status: w.status,
+          method: w.method,
+          verifiedAt: w.verifiedAt,
+          user: w.user,
+          bankDetails: {
+            accountNumber,
+            bankName
+          }
+        };
+      } catch (err) {
+        console.error(`Decryption error for withdrawal ${w._id}:`, err);
+        return {
+          _id: w._id,
+          amount: w.amount,
+          status: w.status,
+          method: w.method,
+          verifiedAt: w.verifiedAt,
+          user: w.user,
+          bankDetails: {
+            accountNumber: 'Decryption failed',
+            bankName: 'Decryption failed'
+          }
+        };
+      }
+    });
+
+    res.json(result);
+  } catch (error) {
+    console.error('Error fetching processed withdrawals:', error.message);
+    res.status(500).json({ error: 'Failed to fetch processed withdrawals' });
+  }
+};
+

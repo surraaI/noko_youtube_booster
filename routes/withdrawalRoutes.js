@@ -47,6 +47,13 @@ router.get('/:id/details',
   withdrawalController.getSecureDetails
 );
 
+router.get(
+  '/processed',
+  authMiddleware,
+  roleMiddleware(['admin', 'superAdmin']),
+  withdrawalController.getProcessedWithdrawals
+);
+
 router.get('/leaderboard', authMiddleware, getLeaderboard);
 
 module.exports = router;
