@@ -200,7 +200,7 @@ const isValidEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 exports.signup = async (req, res) => {
     try {
         const { name, email, password } = req.body;
-        const { referralCode } = req.query;
+        const { referralCode } = req.query.ref;
 
         if (!isValidEmail(email)) {
             return res.status(400).json({ message: 'Invalid email format' });
